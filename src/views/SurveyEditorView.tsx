@@ -29,6 +29,7 @@ export function SurveyEditorView() {
   const [activeQuestionId, setActiveQuestionId] = useState<string>('');
   const [showTranslations, setShowTranslations] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [sharedSurvey, setSharedSurvey] = useState<Survey | null>(null);
 
   useEffect(() => {
@@ -93,6 +94,8 @@ export function SurveyEditorView() {
   function removeQuestion(qId: string) {
     const next = questions.filter((q) => q.id !== qId);
     setQuestions(next);
+    if (errorKey) setErrorKey(null);
+    if (runtimeError) setRuntimeError(null);
     if (activeQuestionId === qId) {
       setActiveQuestionId(next[0]?.id || '');
     }
@@ -109,6 +112,9 @@ export function SurveyEditorView() {
   }
 
   async function handleSave(targetStatus: SurveyStatus, openShare = false) {
+    setErrorKey(null);
+    setRuntimeError(null);
+
     const check = validateSurveyDraft({ title, questions });
     if (!check.valid) {
       setErrorKey(check.errorKey);
@@ -146,6 +152,10 @@ export function SurveyEditorView() {
       if (openShare) {
         setSharedSurvey({ ...payload, id: savedId });
       }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setRuntimeError(msg);
+      showToast(msg, 'error');
     } finally {
       setSaving(false);
     }
@@ -186,9 +196,9 @@ export function SurveyEditorView() {
         </div>
       </header>
 
-      {errorKey && (
+      {(errorKey || runtimeError) && (
         <div className="notice-banner" style={{ borderColor: 'var(--danger)', background: 'var(--danger-soft)' }}>
-          {t(errorKey as TranslationKey)}
+          {errorKey ? t(errorKey as TranslationKey) : runtimeError}
         </div>
       )}
 

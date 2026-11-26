@@ -12,6 +12,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { generateId } from '../lib/templates.ts';
+import { stripUndefinedDeep } from '../lib/validation.ts';
 import type { Survey, SurveyResponse, SurveyStatus } from '../types/survey.ts';
 import { COLLECTIONS, getDb, isFirebaseConfigured } from './firebase.ts';
 
@@ -121,15 +122,16 @@ export function subscribeSurveyById(
 }
 
 export async function createSurvey(data: Omit<Survey, 'id'>): Promise<string> {
+  const cleanData = stripUndefinedDeep(data);
   const db = getDb();
   if (!db || !isFirebaseConfigured) {
     const id = generateId('srv');
     const existing = readLocal<Survey>(LOCAL_SURVEYS_KEY);
-    writeLocal(LOCAL_SURVEYS_KEY, [{ ...data, id }, ...existing]);
+    writeLocal(LOCAL_SURVEYS_KEY, [{ ...cleanData, id }, ...existing]);
     return id;
   }
 
-  const ref = await addDoc(collection(db, COLLECTIONS.SURVEYS), data);
+  const ref = await addDoc(collection(db, COLLECTIONS.SURVEYS), cleanData);
   return ref.id;
 }
 
@@ -137,7 +139,7 @@ export async function updateSurvey(
   surveyId: string,
   patch: Partial<Omit<Survey, 'id'>>
 ): Promise<void> {
-  const nextPatch = { ...patch, updatedAt: Date.now() };
+  const nextPatch = stripUndefinedDeep({ ...patch, updatedAt: Date.now() });
   const db = getDb();
   if (!db || !isFirebaseConfigured) {
     const existing = readLocal<Survey>(LOCAL_SURVEYS_KEY);
@@ -216,23 +218,24 @@ export function subscribeSurveyResponses(
 export async function submitSurveyResponse(
   response: Omit<SurveyResponse, 'id'>
 ): Promise<string> {
+  const cleanResponse = stripUndefinedDeep(response);
   const db = getDb();
   if (!db || !isFirebaseConfigured) {
     const id = generateId('resp');
     const existingResponses = readLocal<SurveyResponse>(LOCAL_RESPONSES_KEY);
-    writeLocal(LOCAL_RESPONSES_KEY, [{ ...response, id }, ...existingResponses]);
+    writeLocal(LOCAL_RESPONSES_KEY, [{ ...cleanResponse, id }, ...existingResponses]);
     const existingSurveys = readLocal<Survey>(LOCAL_SURVEYS_KEY);
     writeLocal(
       LOCAL_SURVEYS_KEY,
       existingSurveys.map((s) =>
-        s.id === response.surveyId ? { ...s, responseCount: (s.responseCount || 0) + 1 } : s
+        s.id === cleanResponse.surveyId ? { ...s, responseCount: (s.responseCount || 0) + 1 } : s
       )
     );
     return id;
   }
 
-  const ref = await addDoc(collection(db, COLLECTIONS.RESPONSES), response);
-  await updateDoc(doc(db, COLLECTIONS.SURVEYS, response.surveyId), {
+  const ref = await addDoc(collection(db, COLLECTIONS.RESPONSES), cleanResponse);
+  await updateDoc(doc(db, COLLECTIONS.SURVEYS, cleanResponse.surveyId), {
     responseCount: increment(1),
   }).catch(() => {
     // Non-fatal if rules restrict player updates to survey counter

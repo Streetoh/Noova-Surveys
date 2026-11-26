@@ -85,3 +85,19 @@ export function validateSurveyDraft(survey: Pick<Survey, 'title' | 'questions'>)
 export function isValidPin(pin: string): boolean {
   return /^\d{4}$/.test(pin);
 }
+
+export function stripUndefinedDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripUndefinedDeep(item)) as unknown as T;
+  }
+  if (value !== null && typeof value === 'object') {
+    const clean: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      if (val !== undefined) {
+        clean[key] = stripUndefinedDeep(val);
+      }
+    }
+    return clean as T;
+  }
+  return value;
+}

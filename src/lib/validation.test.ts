@@ -3,6 +3,7 @@ import {
   canAdvanceQuestion,
   isValidPin,
   resolveLocalizedText,
+  stripUndefinedDeep,
   validateAllAnswers,
   validateSurveyDraft,
 } from './validation.ts';
@@ -45,5 +46,27 @@ describe('validation', () => {
     expect(isValidPin('1234')).toBe(true);
     expect(isValidPin('123')).toBe(false);
     expect(isValidPin('abcd')).toBe(false);
+  });
+
+  it('strips nested undefined fields so Firestore addDoc/updateDoc never fails', () => {
+    const dirty = {
+      title: 'Test',
+      questions: [
+        {
+          id: 'q1',
+          type: 'text',
+          text: { et: 'Hola', en: undefined },
+          min: undefined,
+          max: undefined,
+          minLabel: undefined,
+        },
+      ],
+    };
+    const cleaned = stripUndefinedDeep(dirty);
+    expect('min' in cleaned.questions[0]).toBe(false);
+    expect('max' in cleaned.questions[0]).toBe(false);
+    expect('minLabel' in cleaned.questions[0]).toBe(false);
+    expect('en' in cleaned.questions[0].text).toBe(false);
+    expect(cleaned.questions[0].text.et).toBe('Hola');
   });
 });
