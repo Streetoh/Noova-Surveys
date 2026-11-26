@@ -2,7 +2,10 @@
 [data-theme='dark'] {
   color-scheme: dark;
   --bg: #0B0E14;
+  --bg-glass: rgba(11, 14, 20, 0.92);
   --surface: #141923;
+  --surface-glass: rgba(20, 25, 35, 0.96);
+  --surface-subtle: rgba(11, 14, 20, 0.45);
   --surface-elevated: #1A2130;
   --surface-hover: #212A3D;
 
@@ -14,6 +17,7 @@
   --accent-hover: #A5EC1C;
   --accent-text: #0B0E14;
   --accent-soft: rgba(184, 255, 44, 0.14);
+  --accent-border: rgba(184, 255, 44, 0.42);
 
   --success: #B8FF2C;
   --success-soft: rgba(184, 255, 44, 0.14);

@@ -56,6 +56,58 @@ export function createEmptyQuestion(type: Question['type'] = 'rating10'): Questi
   return base;
 }
 
+export function changeQuestionType(question: Question, nextType: Question['type']): Question {
+  if (question.type === nextType) return question;
+
+  const isNumericNext =
+    nextType === 'rating10' || nextType === 'slider' || nextType === 'emoji5';
+
+  const hasCustomText = Boolean(
+    question.text.et.trim() ||
+      question.text.en?.trim() ||
+      question.text.ru?.trim() ||
+      question.text.es?.trim()
+  );
+
+  const next: Question = {
+    id: question.id,
+    type: nextType,
+    text:
+      nextType === 'bodymap' && !hasCustomText
+        ? { ...createEmptyQuestion('bodymap').text }
+        : { ...question.text },
+    required: question.required,
+  };
+
+  if (isNumericNext && question.highlightInSummary) {
+    next.highlightInSummary = true;
+  }
+
+  if (nextType === 'text') {
+    next.multiline = question.multiline ?? false;
+    next.quickChips = question.quickChips ? [...question.quickChips] : [];
+  } else if (nextType === 'slider') {
+    next.min = question.min ?? 0;
+    next.max = question.max ?? 10;
+    next.polarity = question.polarity ?? 'positive';
+    next.minLabel = question.minLabel ? { ...question.minLabel } : { et: '', en: '', ru: '', es: '' };
+    next.maxLabel = question.maxLabel ? { ...question.maxLabel } : { et: '', en: '', ru: '', es: '' };
+  } else if (nextType === 'rating10' || nextType === 'emoji5') {
+    next.polarity = question.polarity ?? 'positive';
+  } else if (nextType === 'choice') {
+    next.multiSelect = question.multiSelect ?? false;
+    if (question.maxSelections) {
+      next.maxSelections = question.maxSelections;
+    }
+    next.options =
+      question.options && question.options.length >= 2
+        ? question.options.map((opt) => ({ id: opt.id, label: { ...opt.label } }))
+        : createYesNoOptions();
+  }
+
+  return next;
+}
+
 export const STARTER_TEMPLATES: Omit<Survey, 'id' | 'createdAt' | 'updatedAt' | 'responseCount'>[] = [
   {
     title: 'Treeningu tagasiside',

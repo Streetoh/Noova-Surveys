@@ -86,10 +86,10 @@
 - **Scoped real-time listener**: `SurveyResultsView` opens `onSnapshot` ONLY while `!isSurveyEffectivelyClosed(survey)`; closed or expired surveys use one-shot `getDocs`.
 - `PlayerSurveyView` performs 1 `getDoc` on load (including `teamRosterSnapshot`) and 1 `addDoc` + atomic `increment(1)` on `surveys/{id}.responseCount` on submit.
 
-## 4. Visual System Tokens (Athletic Volt)
-- High-contrast dark base (`#0B0E14`), card surface (`#141923`), electric lime primary accent (`#B8FF2C`), alert/discomfort coral (`#FF5A5F`).
+## 4. Visual System Tokens & Theme Engine (`src/lib/theme.ts`)
+- 5 switchable presets (`carbon-blue`, `club-emerald`, `athletic-volt`, `tactical-amber`, `light-minimal`) plus custom accent override with automatic WCAG contrast foreground (`--accent-text`) persisted in `localStorage`.
 - **Coach**: Minimal top bar (`<- Back`, title, `ET/EN/RU/ES`, Lock) + fixed 3-tab Bottom Dock (**Surveys**, **Teams**, **Settings**).
-- **Editor**: Title + Team header, closed-by-default `"More options"` accordion, horizontal swipeable question carousel + `+` FAB + Bottom Sheet, sticky `"Activate & share"` footer.
+- **Editor**: Centered `760px` column with Title + Team header, closed-by-default `"Advanced options"` accordion, centered swipeable question cards with direct inline type selector (`Emojis 1–5`, `Scale 1–10`, `Slider`, `Multiple choice`, `Body map`, `Text`), full-width `+ Add question` button, and sticky `"Activate & share"` footer.
 - **Player**: Stories-mode full-screen card with segmented top bar, manual **"Continue" / "Submit"** button, Semicircular Dial, Dual Body Map, and lime confirmation check.
 - **Results**: Top Bento Grid (clickable circular participation ring + independent per-question KPI cards, never cross-question averages), compact vertical bar histograms, 100%-width horizontal choice bars, and Body Map team heatmap.
 

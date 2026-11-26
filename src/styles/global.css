@@ -61,7 +61,7 @@ a:focus-visible {
   justify-content: space-between;
   gap: var(--space-3);
   padding: calc(var(--space-2) + env(safe-area-inset-top)) var(--space-4) var(--space-2);
-  background: rgba(11, 14, 20, 0.92);
+  background: var(--bg-glass);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
 }
@@ -135,7 +135,7 @@ a:focus-visible {
   z-index: 35;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  background: rgba(20, 25, 35, 0.96);
+  background: var(--surface-glass);
   backdrop-filter: blur(14px);
   border-top: 1px solid var(--border-strong);
   padding: 6px var(--space-3) calc(6px + env(safe-area-inset-bottom));
@@ -257,7 +257,7 @@ a:focus-visible {
   gap: var(--space-2);
   padding: 10px var(--space-4);
   border-bottom: 1px solid var(--border);
-  background: rgba(11, 14, 20, 0.45);
+  background: var(--surface-subtle);
 }
 
 .section-label {
@@ -598,10 +598,11 @@ a:focus-visible {
 }
 
 /* =====================================================
-   SURVEY EDITOR: CLEAN SETUP + ACCORDION + CAROUSEL + FAB + BOTTOM SHEET
+   SURVEY EDITOR: CENTERED LAYOUT + INLINE TYPE PICKER
    ===================================================== */
 .editor-wrap {
-  max-width: 960px;
+  width: 100%;
+  max-width: 760px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -632,7 +633,7 @@ a:focus-visible {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
-  background: rgba(11, 14, 20, 0.35);
+  background: var(--surface-subtle);
 }
 
 .accordion-trigger:hover {
@@ -661,12 +662,13 @@ a:focus-visible {
 }
 
 .carousel-track {
+  width: 100%;
   display: flex;
   gap: var(--space-4);
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   scroll-behavior: smooth;
-  padding: 2px 24px 8px 2px;
+  padding: 2px 0 8px;
   scrollbar-width: none;
 }
 
@@ -675,8 +677,9 @@ a:focus-visible {
 }
 
 .carousel-card {
-  flex: 0 0 88%;
-  scroll-snap-align: start;
+  flex: 0 0 100%;
+  width: 100%;
+  scroll-snap-align: center;
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
@@ -688,13 +691,12 @@ a:focus-visible {
 
 @media (min-width: 768px) {
   .carousel-card {
-    flex: 0 0 78%;
     padding: var(--space-5);
   }
 }
 
 .carousel-card.active-card {
-  border-color: rgba(184, 255, 44, 0.45);
+  border-color: var(--accent-border);
 }
 
 .carousel-dots {
@@ -702,7 +704,7 @@ a:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: var(--space-2) 0;
+  padding: var(--space-1) 0;
 }
 
 .carousel-dot {
@@ -719,27 +721,60 @@ a:focus-visible {
   background: var(--accent);
 }
 
-.editor-fab {
-  position: fixed;
-  right: 20px;
-  bottom: calc(82px + env(safe-area-inset-bottom));
-  z-index: 42;
-  width: 56px;
-  height: 56px;
-  border-radius: var(--radius-full);
-  background: var(--accent);
-  color: var(--accent-text);
-  font-size: 28px;
+.editor-add-btn {
+  width: 100%;
+  min-height: 48px;
+  border: 1.5px dashed var(--border-strong);
+  background: var(--surface);
+  font-size: 14px;
   font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 10px 28px rgba(184, 255, 44, 0.32);
-  transition: transform 0.14s ease;
 }
 
-.editor-fab:hover {
-  transform: scale(1.06);
+.editor-add-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-primary);
+}
+
+.type-picker-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+@media (min-width: 520px) {
+  .type-picker-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.type-pill-btn {
+  min-height: 38px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  text-align: left;
+  transition: border-color 0.14s ease, background-color 0.14s ease, color 0.14s ease;
+}
+
+.type-pill-btn:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.type-pill-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 700;
 }
 
 .editor-sticky-footer {
@@ -749,7 +784,7 @@ a:focus-visible {
   bottom: 0;
   z-index: 35;
   padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom));
-  background: rgba(11, 14, 20, 0.94);
+  background: var(--bg-glass);
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--border);
   display: flex;
@@ -762,59 +797,131 @@ a:focus-visible {
   min-height: 48px;
 }
 
-.bottom-sheet-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 65;
-  background: rgba(0, 0, 0, 0.72);
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-}
-
-.bottom-sheet {
-  width: 100%;
-  max-width: 560px;
-  background: var(--surface);
-  border-top: 1px solid var(--border-strong);
-  border-radius: 20px 20px 0 0;
-  padding: var(--space-5) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom));
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.type-grid {
+/* =====================================================
+   SETTINGS: APPEARANCE & THEME PICKER
+   ===================================================== */
+.theme-preset-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(126px, 1fr));
   gap: 10px;
 }
 
-.type-tile {
-  min-height: 70px;
-  padding: 12px;
+.theme-preset-card {
+  padding: 10px;
   border-radius: var(--radius-md);
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-strong);
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg);
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 6px;
+  gap: 8px;
   text-align: left;
-  font-weight: 600;
-  font-size: 13.5px;
-  transition: border-color 0.14s ease, background-color 0.14s ease;
+  transition: border-color 0.14s ease, transform 0.12s ease;
 }
 
-.type-tile:hover {
+.theme-preset-card:hover {
   border-color: var(--accent);
-  background: var(--surface-hover);
 }
 
-.type-tile-icon {
-  font-size: 20px;
-  line-height: 1;
+.theme-preset-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.theme-mini-preview {
+  height: 52px;
+  border-radius: 8px;
+  padding: 7px;
+  border: 1px solid rgba(128, 128, 128, 0.25);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.theme-mini-card {
+  flex: 1;
+  border-radius: 5px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.theme-mini-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.theme-mini-line {
+  height: 4px;
+  border-radius: 999px;
+}
+
+.theme-mini-btn {
+  height: 7px;
+  width: 52%;
+  border-radius: 999px;
+  align-self: flex-end;
+}
+
+.theme-preset-name {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.accent-swatch-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.accent-swatch {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 800;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.accent-swatch:hover {
+  transform: scale(1.08);
+}
+
+.accent-swatch.active {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.accent-picker-label {
+  min-height: 36px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.accent-picker-input {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  cursor: pointer;
 }
 
 .slider-config-grid {
@@ -892,7 +999,7 @@ a:focus-visible {
 .story-seg {
   height: 4px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--border-strong);
   overflow: hidden;
   transition: background-color 0.2s ease;
 }
@@ -902,7 +1009,7 @@ a:focus-visible {
 }
 
 .story-seg.current {
-  background: linear-gradient(90deg, var(--accent) 0%, rgba(184, 255, 44, 0.55) 100%);
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent-border) 100%);
 }
 
 .stories-nav-row {
@@ -1130,20 +1237,20 @@ a:focus-visible {
 }
 
 .body-zone {
-  fill: #1A2130;
-  stroke: rgba(255, 255, 255, 0.18);
+  fill: var(--surface-elevated);
+  stroke: var(--border-strong);
   stroke-width: 1.5;
   cursor: pointer;
   transition: fill 0.14s ease, stroke 0.14s ease;
 }
 
 .body-zone:hover {
-  stroke: rgba(255, 255, 255, 0.55);
+  stroke: var(--text-secondary);
 }
 
 .body-zone.selected {
-  fill: #FF5A5F;
-  stroke: #ffffff;
+  fill: var(--danger);
+  stroke: var(--bg);
   stroke-width: 2;
 }
 
@@ -1273,8 +1380,8 @@ a:focus-visible {
   gap: 10px;
   padding: 11px 14px;
   border-radius: var(--radius-md);
-  background: rgba(184, 255, 44, 0.08);
-  border: 1px solid rgba(184, 255, 44, 0.25);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
   color: var(--text-primary);
   font-size: 13px;
   font-weight: 500;
@@ -1313,7 +1420,7 @@ a:focus-visible {
   align-items: center;
   justify-content: center;
   animation: popCheck 0.42s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-  box-shadow: 0 0 32px rgba(184, 255, 44, 0.35);
+  box-shadow: 0 0 32px var(--accent-soft);
 }
 
 /* =====================================================
@@ -1369,7 +1476,7 @@ a:focus-visible {
 }
 
 .kpi-mini-card.highlighted {
-  border-color: rgba(184, 255, 44, 0.4);
+  border-color: var(--accent-border);
 }
 
 .kpi-mini-val {
@@ -1426,7 +1533,7 @@ a:focus-visible {
 }
 
 .voter-pill.answered {
-  border-color: rgba(184, 255, 44, 0.35);
+  border-color: var(--accent-border);
   background: var(--accent-soft);
   color: var(--accent);
 }

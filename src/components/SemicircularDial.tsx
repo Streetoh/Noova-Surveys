@@ -121,7 +121,7 @@ export function SemicircularDial({
         <path
           d={`M ${CX - R} ${CY} A ${R} ${R} 0 0 1 ${CX + R} ${CY}`}
           fill="none"
-          stroke="rgba(255,255,255,0.12)"
+          stroke="var(--border-strong)"
           strokeWidth="22"
           strokeLinecap="round"
         />
@@ -141,7 +141,7 @@ export function SemicircularDial({
           cx={thumb.x}
           cy={thumb.y}
           r="15"
-          fill="#0B0E14"
+          fill="var(--surface)"
           stroke={activeColor}
           strokeWidth="5"
         />

@@ -5,6 +5,7 @@ import { createTranslator, type TranslationKey } from '../i18n/index.ts';
 import { parseQuickChipsInput } from '../lib/dial.ts';
 import { sortPlayersAlphabetically } from '../lib/roster.ts';
 import {
+  changeQuestionType,
   createEmptyChoiceOption,
   createEmptyQuestion,
   createYesNoOptions,
@@ -75,7 +76,6 @@ export function SurveyEditorView() {
 
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
   const [activeSlide, setActiveSlide] = useState(0);
-  const [showAddSheet, setShowAddSheet] = useState(false);
   const [openTranslations, setOpenTranslations] = useState<Record<string, boolean>>({});
   const [chipsDrafts, setChipsDrafts] = useState<Record<string, string>>({});
   const [errorKey, setErrorKey] = useState<string | null>(null);
@@ -138,7 +138,7 @@ export function SurveyEditorView() {
     if (!track) return;
     const card = track.children[bounded] as HTMLElement | undefined;
     if (card) {
-      card.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+      card.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
     }
   }
 
@@ -209,13 +209,19 @@ export function SurveyEditorView() {
     updateQuestion(q.id, { options: current.filter((o) => o.id !== optId) });
   }
 
-  function addQuestionFromSheet(type: QuestionType) {
-    const q = createEmptyQuestion(type);
+  function handleAddQuestion() {
+    const q = createEmptyQuestion('emoji5');
     const nextIndex = questions.length;
     setQuestions((prev) => [...prev, q]);
-    setShowAddSheet(false);
     if (errorKey) setErrorKey(null);
+    if (runtimeError) setRuntimeError(null);
     setTimeout(() => scrollToSlide(nextIndex), 40);
+  }
+
+  function handleSwitchType(qId: string, nextType: QuestionType) {
+    setQuestions((prev) => prev.map((q) => (q.id === qId ? changeQuestionType(q, nextType) : q)));
+    if (errorKey) setErrorKey(null);
+    if (runtimeError) setRuntimeError(null);
   }
 
   function duplicateQuestion(q: Question) {
@@ -542,14 +548,9 @@ export function SurveyEditorView() {
               className={`carousel-card${idx === activeSlide ? ' active-card' : ''}`}
             >
               <div className="row-top">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span className="badge badge-accent">
-                    {t('editor.questionNumber', { index: idx + 1 })}
-                  </span>
-                  <span className="badge">
-                    {t(`editor.type${capitalizeType(q.type)}` as TranslationKey)}
-                  </span>
-                </div>
+                <span className="badge badge-accent">
+                  {t('editor.questionNumber', { index: idx + 1 })}
+                </span>
 
                 <div className="row-actions">
                   <button
@@ -598,6 +599,27 @@ export function SurveyEditorView() {
                 }
                 placeholder={t('editor.questionTextPlaceholder')}
               />
+
+              <div className="field">
+                <span className="field-label">{t('editor.questionTypeLabel')}</span>
+                <div className="type-picker-row">
+                  {QUESTION_TYPE_TILES.map((item) => {
+                    const isActive = q.type === item.type;
+                    return (
+                      <button
+                        key={item.type}
+                        type="button"
+                        className={`type-pill-btn${isActive ? ' active' : ''}`}
+                        aria-pressed={isActive}
+                        onClick={() => handleSwitchType(q.id, item.type)}
+                      >
+                        <span aria-hidden="true">{item.icon}</span>
+                        <span>{t(item.key)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
               {q.type === 'bodymap' && (
                 <div
@@ -930,15 +952,13 @@ export function SurveyEditorView() {
         ))}
       </div>
 
-      {/* Floating + Action Button */}
+      {/* Direct Add Question Button inside centered column */}
       <button
         type="button"
-        className="editor-fab"
-        onClick={() => setShowAddSheet(true)}
-        aria-label={t('editor.addQuestionSheetTitle')}
-        title={t('editor.addQuestionSheetTitle')}
+        className="btn btn-secondary editor-add-btn"
+        onClick={handleAddQuestion}
       >
-        +
+        + {t('editor.addQuestion')}
       </button>
 
       {/* Fixed Bottom Activate & Share Bar */}
@@ -953,56 +973,9 @@ export function SurveyEditorView() {
         </button>
       </div>
 
-      {/* Bottom Sheet for Adding New Question Type */}
-      {showAddSheet && (
-        <div
-          className="bottom-sheet-backdrop"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setShowAddSheet(false)}
-        >
-          <div className="bottom-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2 className="modal-title">{t('editor.addQuestionSheetTitle')}</h2>
-              <button
-                type="button"
-                className="btn btn-ghost btn-compact"
-                onClick={() => setShowAddSheet(false)}
-                aria-label={t('common.close')}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="type-grid">
-              {QUESTION_TYPE_TILES.map((item) => (
-                <button
-                  key={item.type}
-                  type="button"
-                  className="type-tile"
-                  onClick={() => addQuestionFromSheet(item.type)}
-                >
-                  <span className="type-tile-icon" aria-hidden="true">{item.icon}</span>
-                  <span>{t(item.key)}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
       {sharedSurvey && (
         <ShareSurveyModal survey={sharedSurvey} onClose={() => setSharedSurvey(null)} />
       )}
     </section>
   );
-}
-
-function capitalizeType(type: QuestionType): string {
-  if (type === 'text') return 'Text';
-  if (type === 'slider') return 'Slider';
-  if (type === 'rating10') return 'Rating10';
-  if (type === 'choice') return 'Choice';
-  if (type === 'bodymap') return 'Bodymap';
-  return 'Emoji5';
 }

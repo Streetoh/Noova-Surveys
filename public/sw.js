@@ -1,4 +1,4 @@
-const CACHE_NAME = 'youth-surveys-v6';
+const CACHE_NAME = 'youth-surveys-v7';
 const STATIC_ASSETS = ['./manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {
