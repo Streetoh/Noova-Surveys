@@ -4,6 +4,7 @@ import { getFirestore, type Firestore } from 'firebase/firestore';
 export const COLLECTIONS = {
   SURVEYS: 'surveys',
   RESPONSES: 'survey_responses',
+  TEAMS: 'survey_teams',
 } as const;
 
 const firebaseConfig = {

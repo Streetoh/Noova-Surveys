@@ -1,14 +1,16 @@
 import type { Locale } from '../types/survey.ts';
 import { en } from './en.ts';
+import { es } from './es.ts';
 import { et, type TranslationKey, type Translations } from './et.ts';
 import { ru } from './ru.ts';
 
-export const SUPPORTED_LOCALES: Locale[] = ['et', 'en', 'ru'];
+export const SUPPORTED_LOCALES: Locale[] = ['et', 'en', 'ru', 'es'];
 
 export const DICTIONARIES: Record<Locale, Translations> = {
   et,
   en,
   ru,
+  es,
 };
 
 export function translate(

@@ -1,15 +1,19 @@
-export type Locale = 'et' | 'en' | 'ru';
+export type Locale = 'et' | 'en' | 'ru' | 'es';
 
 export type SurveyStatus = 'draft' | 'active' | 'closed';
 
-export type QuestionType = 'text' | 'slider' | 'rating10' | 'emoji5';
-
-export type IdentityMode = 'name' | 'pseudonym';
+export type QuestionType = 'text' | 'slider' | 'rating10' | 'emoji5' | 'choice';
 
 export interface LocalizedText {
   et: string;
   en?: string;
   ru?: string;
+  es?: string;
+}
+
+export interface ChoiceOption {
+  id: string;
+  label: LocalizedText;
 }
 
 export interface Question {
@@ -22,6 +26,16 @@ export interface Question {
   max?: number;
   minLabel?: LocalizedText;
   maxLabel?: LocalizedText;
+  multiSelect?: boolean;
+  options?: ChoiceOption[];
+}
+
+export interface Team {
+  id: string;
+  name: string;
+  players: string[];
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface Survey {
@@ -29,9 +43,11 @@ export interface Survey {
   title: string;
   description: string;
   teamTag: string;
+  teamId?: string;
+  teamRosterSnapshot?: string[];
+  closesAt?: number | null;
   status: SurveyStatus;
   isTemplate: boolean;
-  allowIdentityChoice: boolean;
   allowMultipleFromSameDevice: boolean;
   questions: Question[];
   responseCount: number;
@@ -39,13 +55,12 @@ export interface Survey {
   updatedAt: number;
 }
 
-export type AnswerValue = string | number;
+export type AnswerValue = string | number | string[];
 
 export interface SurveyResponse {
   id: string;
   surveyId: string;
   respondentName: string;
-  identityMode: IdentityMode;
   locale: Locale;
   answers: Record<string, AnswerValue>;
   submittedAt: number;

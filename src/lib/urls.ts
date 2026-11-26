@@ -7,3 +7,11 @@ export function buildPublicSurveyUrl(
   const normalizedPath = cleanPath.endsWith('/') ? cleanPath : `${cleanPath}/`;
   return `${origin}${normalizedPath}#/s/${encodeURIComponent(surveyId)}`;
 }
+
+export const VIBER_ESTONIAN_PROMPT =
+  'Palun võta 3 minutit ja vasta lühikesele küsitlusele treeningute kohta:';
+
+export function buildViberShareUrl(publicUrl: string): string {
+  const message = `${VIBER_ESTONIAN_PROMPT} ${publicUrl}`;
+  return `viber://forward?text=${encodeURIComponent(message)}`;
+}

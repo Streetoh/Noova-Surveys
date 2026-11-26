@@ -28,6 +28,12 @@ export function CoachShell() {
               {t('nav.surveys')}
             </NavLink>
             <NavLink
+              to="/coach/teams"
+              className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+            >
+              {t('nav.teams')}
+            </NavLink>
+            <NavLink
               to="/coach/settings"
               className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
             >

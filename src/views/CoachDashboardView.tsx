@@ -4,6 +4,7 @@ import { ConfirmModal } from '../components/ConfirmModal.tsx';
 import { ShareSurveyModal } from '../components/ShareSurveyModal.tsx';
 import { createTranslator } from '../i18n/index.ts';
 import { STARTER_TEMPLATES, cloneSurveyAsNew } from '../lib/templates.ts';
+import { isSurveyExpired } from '../lib/validation.ts';
 import { isFirebaseConfigured } from '../services/firebase.ts';
 import { createSurvey, deleteSurveyById, subscribeSurveys } from '../services/surveysRepo.ts';
 import { useAppStore } from '../store/useAppStore.ts';
@@ -130,9 +131,9 @@ export function CoachDashboardView() {
                   <div className="row-top">
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <h2 className="row-title">{survey.title}</h2>
-                      <span className={`badge badge-${survey.status}`}>
-                        {survey.status === 'active' && <span className="live-dot" />}
-                        {t(`status.${survey.status}`)}
+                      <span className={`badge badge-${isSurveyExpired(survey) ? 'closed' : survey.status}`}>
+                        {survey.status === 'active' && !isSurveyExpired(survey) && <span className="live-dot" />}
+                        {isSurveyExpired(survey) ? t('results.autoClosedBadge') : t(`status.${survey.status}`)}
                       </span>
                       {survey.teamTag && <span className="badge">{survey.teamTag}</span>}
                     </div>

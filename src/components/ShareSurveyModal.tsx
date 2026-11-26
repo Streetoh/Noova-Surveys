@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { createTranslator } from '../i18n/index.ts';
-import { buildPublicSurveyUrl } from '../lib/urls.ts';
+import { buildPublicSurveyUrl, buildViberShareUrl } from '../lib/urls.ts';
 import { useAppStore } from '../store/useAppStore.ts';
 import type { Survey } from '../types/survey.ts';
 
@@ -19,6 +19,7 @@ export function ShareSurveyModal({ survey, onClose }: ShareSurveyModalProps) {
   const [fullscreen, setFullscreen] = useState(false);
 
   const publicUrl = buildPublicSurveyUrl(survey.id);
+  const viberUrl = buildViberShareUrl(publicUrl);
 
   useEffect(() => {
     let active = true;
@@ -89,7 +90,7 @@ export function ShareSurveyModal({ survey, onClose }: ShareSurveyModalProps) {
 
         {qrDataUrl && (
           <div className="qr-box">
-            <img src={qrDataUrl} alt={survey.title} width={220} height={220} />
+            <img src={qrDataUrl} alt={survey.title} width={210} height={210} />
           </div>
         )}
 
@@ -105,7 +106,20 @@ export function ShareSurveyModal({ survey, onClose }: ShareSurveyModalProps) {
           />
         </div>
 
-        <div className="modal-footer">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <a
+            href={viberUrl}
+            className="btn btn-viber"
+            style={{ textDecoration: 'none' }}
+          >
+            {t('share.shareViber')}
+          </a>
+          <button type="button" className="btn btn-primary" onClick={handleCopy}>
+            {t('share.copyLink')}
+          </button>
+        </div>
+
+        <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
           <a
             href={publicUrl}
             target="_blank"
@@ -113,7 +127,7 @@ export function ShareSurveyModal({ survey, onClose }: ShareSurveyModalProps) {
             className="btn btn-ghost btn-compact"
             style={{ textDecoration: 'none' }}
           >
-            {t('share.openPreview')}
+            {t('share.openPreview')} ↗
           </a>
           <button
             type="button"
@@ -121,9 +135,6 @@ export function ShareSurveyModal({ survey, onClose }: ShareSurveyModalProps) {
             onClick={() => setFullscreen(true)}
           >
             {t('share.fullscreenQr')}
-          </button>
-          <button type="button" className="btn btn-primary btn-compact" onClick={handleCopy}>
-            {t('share.copyLink')}
           </button>
         </div>
       </div>

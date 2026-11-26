@@ -1,4 +1,4 @@
-import type { AnswerValue, Locale, LocalizedText, Question, Survey } from '../types/survey.ts';
+import type { AnswerValue, ChoiceOption, Locale, LocalizedText, Question, Survey } from '../types/survey.ts';
 
 export function resolveLocalizedText(text: LocalizedText | undefined, locale: Locale): string {
   if (!text) return '';
@@ -6,16 +6,43 @@ export function resolveLocalizedText(text: LocalizedText | undefined, locale: Lo
   if (typeof candidate === 'string' && candidate.trim().length > 0) {
     return candidate.trim();
   }
-  if (typeof text.et === 'string' && text.et.trim().length > 0) {
-    return text.et.trim();
-  }
-  if (typeof text.en === 'string' && text.en.trim().length > 0) {
-    return text.en.trim();
-  }
-  if (typeof text.ru === 'string' && text.ru.trim().length > 0) {
-    return text.ru.trim();
+  for (const fallback of ['et', 'en', 'es', 'ru'] as const) {
+    const val = text[fallback];
+    if (typeof val === 'string' && val.trim().length > 0) {
+      return val.trim();
+    }
   }
   return '';
+}
+
+export function hasAnyQuestionText(question: Question): boolean {
+  return resolveLocalizedText(question.text, 'et').length > 0;
+}
+
+export function pruneEmptyChoiceOptions(options: ChoiceOption[] | undefined): ChoiceOption[] {
+  if (!Array.isArray(options)) return [];
+  return options.filter((opt) => resolveLocalizedText(opt.label, 'et').length > 0);
+}
+
+export function pruneEmptyQuestions(questions: Question[]): Question[] {
+  return questions
+    .filter((q) => hasAnyQuestionText(q))
+    .map((q) => (q.type === 'choice' ? { ...q, options: pruneEmptyChoiceOptions(q.options) } : q));
+}
+
+export function isSurveyExpired(
+  survey: Pick<Survey, 'closesAt'>,
+  now: number = Date.now()
+): boolean {
+  return typeof survey.closesAt === 'number' && Number.isFinite(survey.closesAt) && now >= survey.closesAt;
+}
+
+export function isSurveyEffectivelyClosed(
+  survey: Pick<Survey, 'status' | 'closesAt'>,
+  now: number = Date.now()
+): boolean {
+  if (survey.status !== 'active') return true;
+  return isSurveyExpired(survey, now);
 }
 
 export function isAnswerProvided(question: Question, value: AnswerValue | undefined): boolean {
@@ -23,12 +50,22 @@ export function isAnswerProvided(question: Question, value: AnswerValue | undefi
   if (question.type === 'text') {
     return typeof value === 'string' && value.trim().length > 0;
   }
+  if (question.type === 'choice') {
+    const validIds = new Set((question.options || []).map((o) => o.id));
+    if (question.multiSelect) {
+      return Array.isArray(value) && value.length > 0 && value.every((id) => validIds.has(id));
+    }
+    if (typeof value === 'string') {
+      return value.trim().length > 0 && validIds.has(value);
+    }
+    return Array.isArray(value) && value.length === 1 && validIds.has(value[0]);
+  }
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) return false;
     if (question.type === 'rating10') return value >= 1 && value <= 10;
     if (question.type === 'emoji5') return value >= 1 && value <= 5;
     if (question.type === 'slider') {
-      const min = question.min ?? 1;
+      const min = question.min ?? 0;
       const max = question.max ?? 10;
       return value >= min && value <= max;
     }
@@ -60,26 +97,33 @@ export function validateAllAnswers(
 export function validateSurveyDraft(survey: Pick<Survey, 'title' | 'questions'>): {
   valid: boolean;
   errorKey: string | null;
+  cleanedQuestions: Question[];
 } {
   if (!survey.title || survey.title.trim().length === 0) {
-    return { valid: false, errorKey: 'validation.titleRequired' };
+    return { valid: false, errorKey: 'validation.titleRequired', cleanedQuestions: survey.questions };
   }
-  if (!Array.isArray(survey.questions) || survey.questions.length === 0) {
-    return { valid: false, errorKey: 'validation.questionsRequired' };
+
+  const cleanedQuestions = pruneEmptyQuestions(survey.questions);
+  if (cleanedQuestions.length === 0) {
+    return { valid: false, errorKey: 'validation.questionsRequired', cleanedQuestions: [] };
   }
-  for (const q of survey.questions) {
-    if (!resolveLocalizedText(q.text, 'et')) {
-      return { valid: false, errorKey: 'validation.questionTextRequired' };
-    }
+
+  for (const q of cleanedQuestions) {
     if (q.type === 'slider') {
-      const min = q.min ?? 1;
+      const min = q.min ?? 0;
       const max = q.max ?? 10;
       if (min >= max) {
-        return { valid: false, errorKey: 'validation.invalidSliderRange' };
+        return { valid: false, errorKey: 'validation.invalidSliderRange', cleanedQuestions };
+      }
+    }
+    if (q.type === 'choice') {
+      const opts = pruneEmptyChoiceOptions(q.options);
+      if (opts.length < 2) {
+        return { valid: false, errorKey: 'validation.choiceOptionsRequired', cleanedQuestions };
       }
     }
   }
-  return { valid: true, errorKey: null };
+  return { valid: true, errorKey: null, cleanedQuestions };
 }
 
 export function isValidPin(pin: string): boolean {

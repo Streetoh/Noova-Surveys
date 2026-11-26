@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const i18nDir = path.resolve(__dirname, '../src/i18n');
-const localeFiles = ['et.ts', 'en.ts', 'ru.ts'];
+const localeFiles = ['et.ts', 'en.ts', 'ru.ts', 'es.ts'];
 
 function extractEntries(filePath) {
   const src = fs.readFileSync(filePath, 'utf8');

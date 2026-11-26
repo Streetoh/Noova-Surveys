@@ -8,7 +8,7 @@ const SESSION_UNLOCK_KEY = 'pps_coach_unlocked_v1';
 function readInitialLocale(): Locale {
   try {
     const saved = window.localStorage.getItem(LANG_KEY);
-    if (saved === 'et' || saved === 'en' || saved === 'ru') return saved;
+    if (saved === 'et' || saved === 'en' || saved === 'ru' || saved === 'es') return saved;
   } catch {
     // Fallback
   }

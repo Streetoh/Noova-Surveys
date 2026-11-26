@@ -5,6 +5,7 @@ import { useAppStore } from './store/useAppStore.ts';
 import { CoachDashboardView } from './views/CoachDashboardView.tsx';
 import { CoachPinGate } from './views/CoachPinGate.tsx';
 import { CoachSettingsView } from './views/CoachSettingsView.tsx';
+import { CoachTeamsView } from './views/CoachTeamsView.tsx';
 import { PlayerSurveyView } from './views/PlayerSurveyView.tsx';
 import { SurveyEditorView } from './views/SurveyEditorView.tsx';
 import { SurveyResultsView } from './views/SurveyResultsView.tsx';
@@ -31,6 +32,7 @@ export function App() {
         {/* Private PIN-Protected Coach Routes */}
         <Route path="/coach" element={<CoachGuard />}>
           <Route index element={<CoachDashboardView />} />
+          <Route path="teams" element={<CoachTeamsView />} />
           <Route path="edit/:id" element={<SurveyEditorView />} />
           <Route path="results/:id" element={<SurveyResultsView />} />
           <Route path="settings" element={<CoachSettingsView />} />

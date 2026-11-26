@@ -1,20 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ConfirmModal } from '../components/ConfirmModal.tsx';
 import { ShareSurveyModal } from '../components/ShareSurveyModal.tsx';
 import { createTranslator } from '../i18n/index.ts';
 import {
   computeQuestionStats,
   exportSurveyResultsToCsv,
   exportSurveyResultsToJson,
+  formatAnswerForDisplay,
 } from '../lib/analytics.ts';
-import { resolveLocalizedText } from '../lib/validation.ts';
+import { computeRosterParticipation } from '../lib/roster.ts';
+import { isSurveyEffectivelyClosed, isSurveyExpired, resolveLocalizedText } from '../lib/validation.ts';
 import {
-  setSurveyStatus,
+  deleteSurveyResponseById,
   subscribeSurveyById,
   subscribeSurveyResponses,
+  subscribeTeams,
+  updateSurvey,
 } from '../services/surveysRepo.ts';
 import { useAppStore } from '../store/useAppStore.ts';
-import type { Survey, SurveyResponse } from '../types/survey.ts';
+import type { Survey, SurveyResponse, Team } from '../types/survey.ts';
 
 const EMOJI_FACES: Record<number, string> = {
   1: '😣',
@@ -23,6 +28,13 @@ const EMOJI_FACES: Record<number, string> = {
   4: '🙂',
   5: '😄',
 };
+
+function getBarSpectrumColor(value: number, min: number, max: number): string {
+  const ratio = max > min ? (value - min) / (max - min) : 0.5;
+  const clamped = Math.max(0, Math.min(1, ratio));
+  const hue = clamped <= 0.5 ? clamped * 2 * 46 : 46 + (clamped - 0.5) * 2 * 96;
+  return `hsl(${Math.round(hue)}, 80%, 52%)`;
+}
 
 function triggerDownload(content: string, filename: string, mimeType: string) {
   const blob = new Blob([content], { type: mimeType });
@@ -45,9 +57,11 @@ export function SurveyResultsView() {
 
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [responses, setResponses] = useState<SurveyResponse[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'questions' | 'individual'>('questions');
   const [selectedResponseId, setSelectedResponseId] = useState<string | null>(null);
+  const [deletingResponse, setDeletingResponse] = useState<SurveyResponse | null>(null);
   const [showShare, setShowShare] = useState(false);
   const [togglingStatus, setTogglingStatus] = useState(false);
 
@@ -60,22 +74,62 @@ export function SurveyResultsView() {
     const unsubResponses = subscribeSurveyResponses(id, (list) => {
       setResponses(list);
     });
+    const unsubTeams = subscribeTeams((list) => {
+      setTeams(list);
+    });
     return () => {
       unsubSurvey();
       unsubResponses();
+      unsubTeams();
     };
   }, [id]);
+
+  const effectiveRoster = useMemo(() => {
+    if (!survey) return [];
+    if (survey.teamId) {
+      const liveTeam = teams.find((tm) => tm.id === survey.teamId);
+      if (liveTeam && liveTeam.players.length > 0) return liveTeam.players;
+    }
+    return Array.isArray(survey.teamRosterSnapshot) ? survey.teamRosterSnapshot : [];
+  }, [survey, teams]);
+
+  const participation = useMemo(
+    () =>
+      effectiveRoster.length > 0
+        ? computeRosterParticipation(effectiveRoster, responses, locale)
+        : null,
+    [effectiveRoster, responses, locale]
+  );
 
   async function handleToggleStatus() {
     if (!survey || togglingStatus) return;
     setTogglingStatus(true);
     try {
-      const nextStatus = survey.status === 'closed' ? 'active' : 'closed';
-      await setSurveyStatus(survey.id, nextStatus);
-      showToast(nextStatus === 'closed' ? t('results.closedToast') : t('results.reopenedToast'));
+      const currentlyClosed = isSurveyEffectivelyClosed(survey);
+      if (currentlyClosed) {
+        // Reopen and clear any past deadline
+        await updateSurvey(survey.id, {
+          status: 'active',
+          closesAt: isSurveyExpired(survey) ? null : survey.closesAt,
+        });
+        showToast(t('results.reopenedToast'));
+      } else {
+        await updateSurvey(survey.id, { status: 'closed' });
+        showToast(t('results.closedToast'));
+      }
     } finally {
       setTogglingStatus(false);
     }
+  }
+
+  async function handleConfirmDeleteResponse() {
+    if (!deletingResponse || !survey) return;
+    await deleteSurveyResponseById(deletingResponse.id, survey.id);
+    if (selectedResponseId === deletingResponse.id) {
+      setSelectedResponseId(null);
+    }
+    setDeletingResponse(null);
+    showToast(t('results.responseDeletedToast'));
   }
 
   function handleExportCsv() {
@@ -114,6 +168,8 @@ export function SurveyResultsView() {
     );
   }
 
+  const expired = isSurveyExpired(survey);
+  const effectivelyClosed = isSurveyEffectivelyClosed(survey);
   const activeResponse =
     responses.find((r) => r.id === selectedResponseId) || responses[0] || null;
 
@@ -125,9 +181,9 @@ export function SurveyResultsView() {
             ← {t('editor.back')}
           </button>
           <h1 className="page-title">{survey.title}</h1>
-          <span className={`badge badge-${survey.status}`}>
-            {survey.status === 'active' && <span className="live-dot" />}
-            {t(`status.${survey.status}`)}
+          <span className={`badge badge-${effectivelyClosed ? 'closed' : survey.status}`}>
+            {!effectivelyClosed && <span className="live-dot" />}
+            {expired ? t('results.autoClosedBadge') : t(`status.${survey.status}`)}
           </span>
           <span className="badge badge-accent">
             <span className="live-dot" />
@@ -142,7 +198,7 @@ export function SurveyResultsView() {
             disabled={togglingStatus}
             onClick={handleToggleStatus}
           >
-            {survey.status === 'closed' ? t('results.reopenSurvey') : t('results.closeSurvey')}
+            {effectivelyClosed ? t('results.reopenSurvey') : t('results.closeSurvey')}
           </button>
           <button
             type="button"
@@ -169,6 +225,68 @@ export function SurveyResultsView() {
           </button>
         </div>
       </header>
+
+      {/* Roster Participation Tracker ("Who answered" vs "Who is missing") */}
+      {participation && (
+        <div className="surface-section" style={{ marginBottom: 18 }}>
+          <div className="section-bar">
+            <span className="section-label">
+              {t('results.participationTitle', {
+                answered: participation.answeredRoster.length,
+                total: effectiveRoster.length,
+              })}
+            </span>
+          </div>
+          <div className="participation-grid">
+            <div className="participation-col">
+              <div className="field-label" style={{ color: 'var(--success)' }}>
+                ✓ {t('results.answeredPlayers', { count: participation.answeredRoster.length })}
+              </div>
+              <div className="voter-wrap">
+                {participation.answeredRoster.map((name) => (
+                  <span key={name} className="voter-pill answered">
+                    {name}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="participation-col">
+              <div className="field-label" style={{ color: 'var(--warning)' }}>
+                ⏳ {t('results.missingPlayers', { count: participation.missingRoster.length })}
+              </div>
+              {participation.missingRoster.length === 0 ? (
+                <span style={{ fontSize: 12.5, color: 'var(--success)' }}>
+                  {t('results.allAnswered')}
+                </span>
+              ) : (
+                <div className="voter-wrap">
+                  {participation.missingRoster.map((name) => (
+                    <span key={name} className="voter-pill missing">
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {participation.extraRespondents.length > 0 && (
+              <div className="participation-col" style={{ gridColumn: '1 / -1' }}>
+                <div className="field-label">
+                  {t('results.extraPlayers', { count: participation.extraRespondents.length })}
+                </div>
+                <div className="voter-wrap">
+                  {participation.extraRespondents.map((name) => (
+                    <span key={name} className="voter-pill">
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="chip-strip" style={{ marginBottom: 16 }}>
         <button
@@ -204,20 +322,22 @@ export function SurveyResultsView() {
       ) : tab === 'questions' ? (
         <div className="surface-section">
           {survey.questions.map((question, idx) => {
-            const stats = computeQuestionStats(question, responses);
+            const stats = computeQuestionStats(question, responses, locale);
             const qTitle = resolveLocalizedText(question.text, locale);
             return (
-              <article key={question.id} className="hairline-row" style={{ gap: 12, padding: 18 }}>
+              <article key={question.id} className="hairline-row" style={{ gap: 14, padding: 20 }}>
                 <div className="row-top">
                   <h2 className="row-title">
                     {idx + 1}. {qTitle}
                   </h2>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    {stats.type !== 'text' && stats.average !== null && (
-                      <span className="badge badge-accent">
-                        {t('results.average')}: {stats.average}
-                      </span>
-                    )}
+                    {stats.type !== 'text' &&
+                      stats.type !== 'choice' &&
+                      stats.average !== null && (
+                        <span className="badge badge-accent">
+                          {t('results.average')}: {stats.average}
+                        </span>
+                      )}
                     <span className="badge">
                       {t('results.answered', { count: stats.answeredCount })}
                     </span>
@@ -244,35 +364,77 @@ export function SurveyResultsView() {
                         >
                           <div style={{ fontSize: 14 }}>{entry.text}</div>
                           <div className="row-meta">
-                            <strong>{entry.respondentName}</strong>
-                            <span>·</span>
-                            <span>
-                              {entry.identityMode === 'name'
-                                ? t('results.identityName')
-                                : t('results.identityPseudonym')}
-                            </span>
-                            <span>·</span>
+                            <span className="voter-pill">{entry.respondentName}</span>
                             <span>{formatTime(entry.submittedAt)}</span>
                           </div>
                         </div>
                       ))}
                     </div>
                   )
-                ) : (
+                ) : stats.type === 'choice' ? (
                   <div className="dist-list">
                     {stats.buckets.map((b) => (
-                      <div key={b.label} className="dist-row">
-                        <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
-                          {question.type === 'emoji5' ? `${EMOJI_FACES[b.value] || ''} ${b.label}` : b.label}
-                        </span>
-                        <div className="dist-track">
-                          <div className="dist-fill" style={{ width: `${b.percentage}%` }} />
+                      <div key={b.optionId} className="dist-bucket-block">
+                        <div className="dist-row choice-dist-row">
+                          <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+                            {b.label}
+                          </span>
+                          <div className="dist-track">
+                            <div
+                              className="dist-fill"
+                              style={{ width: `${b.percentage}%` }}
+                            />
+                          </div>
+                          <span style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>
+                            {b.count} ({b.percentage}%)
+                          </span>
                         </div>
-                        <span style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>
-                          {b.count} ({b.percentage}%)
-                        </span>
+                        {b.voters.length > 0 && (
+                          <div className="dist-voters choice-voters">
+                            {b.voters.map((voter, vIdx) => (
+                              <span key={`${voter}-${vIdx}`} className="voter-pill">
+                                {voter}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
+                  </div>
+                ) : (
+                  <div className="dist-list">
+                    {stats.buckets.map((b) => {
+                      const barColor = getBarSpectrumColor(b.value, stats.min, stats.max);
+                      return (
+                        <div key={b.label} className="dist-bucket-block">
+                          <div className="dist-row">
+                            <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
+                              {question.type === 'emoji5'
+                                ? `${EMOJI_FACES[b.value] || ''} ${b.label}`
+                                : b.label}
+                            </span>
+                            <div className="dist-track">
+                              <div
+                                className="dist-fill"
+                                style={{ width: `${b.percentage}%`, backgroundColor: barColor }}
+                              />
+                            </div>
+                            <span style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>
+                              {b.count} ({b.percentage}%)
+                            </span>
+                          </div>
+                          {b.voters.length > 0 && (
+                            <div className="dist-voters">
+                              {b.voters.map((voter, vIdx) => (
+                                <span key={`${voter}-${vIdx}`} className="voter-pill">
+                                  {voter}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </article>
@@ -285,27 +447,36 @@ export function SurveyResultsView() {
             {responses.map((resp) => {
               const isSelected = activeResponse?.id === resp.id;
               return (
-                <button
+                <div
                   key={resp.id}
-                  type="button"
                   className={`hairline-row${isSelected ? ' active' : ''}`}
-                  style={{ width: '100%', textAlign: 'left' }}
-                  onClick={() => setSelectedResponseId(resp.id)}
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
                 >
-                  <div className="row-top">
-                    <strong style={{ fontSize: 14 }}>{resp.respondentName}</strong>
-                    <span className="badge">
-                      {resp.identityMode === 'name'
-                        ? t('results.identityName')
-                        : t('results.identityPseudonym')}
-                    </span>
-                  </div>
-                  <div className="row-meta">
-                    <span>{formatTime(resp.submittedAt)}</span>
-                    <span>·</span>
-                    <span>{resp.locale.toUpperCase()}</span>
-                  </div>
-                </button>
+                  <button
+                    type="button"
+                    style={{ flex: 1, textAlign: 'left', padding: 0 }}
+                    onClick={() => setSelectedResponseId(resp.id)}
+                  >
+                    <div className="row-top">
+                      <strong style={{ fontSize: 14 }}>{resp.respondentName}</strong>
+                      <span className="badge">{resp.locale.toUpperCase()}</span>
+                    </div>
+                    <div className="row-meta" style={{ marginTop: 4 }}>
+                      <span>{formatTime(resp.submittedAt)}</span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-compact"
+                    style={{ color: 'var(--danger)' }}
+                    onClick={() => setDeletingResponse(resp)}
+                    aria-label={t('results.deleteResponseAction')}
+                    title={t('results.deleteResponseAction')}
+                  >
+                    🗑
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -314,10 +485,19 @@ export function SurveyResultsView() {
             {activeResponse && (
               <div>
                 <div className="section-bar">
-                  <strong style={{ fontSize: 14 }}>{activeResponse.respondentName}</strong>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    {formatTime(activeResponse.submittedAt)}
-                  </span>
+                  <div>
+                    <strong style={{ fontSize: 14 }}>{activeResponse.respondentName}</strong>
+                    <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--text-muted)' }}>
+                      {formatTime(activeResponse.submittedAt)}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-compact"
+                    onClick={() => setDeletingResponse(activeResponse)}
+                  >
+                    🗑 {t('results.deleteResponseAction')}
+                  </button>
                 </div>
                 {survey.questions.map((q, idx) => {
                   const ans = activeResponse.answers[q.id];
@@ -326,7 +506,7 @@ export function SurveyResultsView() {
                       ? '—'
                       : q.type === 'emoji5'
                         ? `${EMOJI_FACES[Number(ans)] || ''} ${ans}/5`
-                        : String(ans);
+                        : formatAnswerForDisplay(q, ans, locale);
                   return (
                     <div key={q.id} className="hairline-row">
                       <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
@@ -343,6 +523,18 @@ export function SurveyResultsView() {
       )}
 
       {showShare && <ShareSurveyModal survey={survey} onClose={() => setShowShare(false)} />}
+
+      {deletingResponse && (
+        <ConfirmModal
+          title={t('results.deleteResponseTitle')}
+          body={t('results.deleteResponseBody', { name: deletingResponse.respondentName })}
+          confirmLabel={t('results.deleteResponseAction')}
+          cancelLabel={t('common.cancel')}
+          danger
+          onConfirm={handleConfirmDeleteResponse}
+          onCancel={() => setDeletingResponse(null)}
+        />
+      )}
     </section>
   );
 }

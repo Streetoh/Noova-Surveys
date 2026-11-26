@@ -12,12 +12,12 @@
 │   ├── manifest.webmanifest
 │   └── sw.js
 ├── scripts/
-│   └── check-locales.mjs         # Validates et/en/ru key parity & non-empty values
+│   └── check-locales.mjs         # Validates et/en/ru/es key parity & non-empty values
 └── src/
     ├── types/survey.ts           # Core TypeScript data models
-    ├── i18n/                     # et.ts (master type), en.ts, ru.ts, index.ts, i18n.test.ts
+    ├── i18n/                     # et.ts (master type), en.ts, ru.ts, es.ts, index.ts, i18n.test.ts
     ├── lib/                      # Pure domain modules + sibling *.test.ts
-    ├── services/                 # Firebase init & isolated surveysRepo (surveys, survey_responses)
+    ├── services/                 # Firebase init & isolated surveysRepo (surveys, survey_responses, survey_teams)
     ├── store/                    # Zustand store for language, PIN lock & ephemeral toasts
     ├── styles/                   # tokens.css & global.css (Linear × Hevy dark obsidian + cobalt)
     ├── components/               # Reusable UI components & QR Share modal
@@ -26,19 +26,32 @@
 
 ## 2. Core Data Models (`src/types/survey.ts`)
 
+### Firestore Collection: `survey_teams`
+```ts
+{
+  id: string;
+  name: string;
+  players: string[];               // Deduplicated & sorted alphabetically
+  createdAt: number;
+  updatedAt: number;
+}
+```
+
 ### Firestore Collection: `surveys`
 ```ts
 {
   id: string;
   title: string;
   description: string;
-  teamTag: string;                 // e.g. "U10", "U12", "General"
+  teamTag: string;
+  teamId?: string;
+  teamRosterSnapshot?: string[];   // Denormalized roster so Player view stays 1 getDoc
+  closesAt?: number | null;        // Optional automatic close timestamp
   status: 'draft' | 'active' | 'closed';
   isTemplate: boolean;
-  allowIdentityChoice: boolean;    // default true (real name OR pseudonym)
-  allowMultipleFromSameDevice: boolean; // default false (antispam ON)
+  allowMultipleFromSameDevice: boolean;
   questions: Question[];
-  responseCount: number;           // denormalized counter for low-read list view
+  responseCount: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -46,19 +59,19 @@
 
 ### Question Types
 - `text` (`multiline: boolean`)
-- `slider` (`min: number`, `max: number`, `minLabel?: LocalizedText`, `maxLabel?: LocalizedText`)
-- `rating10` (touch 1–10 numeric grid)
+- `slider` (`min: number` default `0`, `max: number` default `10`, centered midpoint, Red→Amber→Green gradient)
+- `rating10` (progressive semantic color 1–10 scale)
 - `emoji5` (5 expressive faces mapped to 1–5)
-- Each question supports `text: { et: string; en?: string; ru?: string }` with automatic fallback to `et` (or first non-empty text).
+- `choice` (`multiSelect?: boolean`, `options: ChoiceOption[]` with Yes/No preset)
+- Each question supports `text: { et: string; en?: string; ru?: string; es?: string }` with automatic fallback.
 
 ### Firestore Collection: `survey_responses`
 ```ts
 {
   id: string;
   surveyId: string;
-  respondentName: string;
-  identityMode: 'name' | 'pseudonym';
-  locale: 'et' | 'en' | 'ru';
+  respondentName: string;          // Player real name (saved locally when not shared-device)
+  locale: 'et' | 'en' | 'ru' | 'es';
   answers: Record<string, string | number>;
   submittedAt: number;
 }
