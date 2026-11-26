@@ -1,8 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { BodyMapSvg } from '../components/BodyMapSvg.tsx';
 import { LanguageSwitcher } from '../components/LanguageSwitcher.tsx';
-import { createTranslator } from '../i18n/index.ts';
+import { SemicircularDial } from '../components/SemicircularDial.tsx';
+import { createTranslator, type TranslationKey } from '../i18n/index.ts';
 import { isBlockedByAntispam, markSubmittedOnDevice } from '../lib/antispam.ts';
+import {
+  isAllClearSelected,
+  isBodyZoneId,
+  normalizeBodyAnswer,
+  selectBodyAllClear,
+  toggleBodyZoneSelection,
+} from '../lib/bodymap.ts';
+import { isQuickChipActiveInText, toggleQuickChipInText } from '../lib/dial.ts';
 import { sortPlayersAlphabetically } from '../lib/roster.ts';
 import {
   canAdvanceQuestion,
@@ -12,7 +22,7 @@ import {
 } from '../lib/validation.ts';
 import { getSurveyById, submitSurveyResponse } from '../services/surveysRepo.ts';
 import { useAppStore } from '../store/useAppStore.ts';
-import type { AnswerValue, Question, Survey } from '../types/survey.ts';
+import type { AnswerValue, BodyZoneId, Question, Survey } from '../types/survey.ts';
 
 const SAVED_PLAYER_NAME_KEY = 'pps_saved_player_name_v1';
 const OTHER_PLAYER_SENTINEL = '__OTHER__';
@@ -23,31 +33,12 @@ const EMOJI_OPTIONS: {
   color: string;
   labelKey: 'emoji.1' | 'emoji.2' | 'emoji.3' | 'emoji.4' | 'emoji.5';
 }[] = [
-  { value: 1, face: '😣', color: '#ef4444', labelKey: 'emoji.1' },
-  { value: 2, face: '😕', color: '#f97316', labelKey: 'emoji.2' },
-  { value: 3, face: '😐', color: '#eab308', labelKey: 'emoji.3' },
-  { value: 4, face: '🙂', color: '#84cc16', labelKey: 'emoji.4' },
-  { value: 5, face: '😄', color: '#22c55e', labelKey: 'emoji.5' },
+  { value: 1, face: '😣', color: '#FF5A5F', labelKey: 'emoji.1' },
+  { value: 2, face: '😕', color: '#F97316', labelKey: 'emoji.2' },
+  { value: 3, face: '😐', color: '#F59E0B', labelKey: 'emoji.3' },
+  { value: 4, face: '🙂', color: '#84CC16', labelKey: 'emoji.4' },
+  { value: 5, face: '😄', color: '#B8FF2C', labelKey: 'emoji.5' },
 ];
-
-const RATING10_COLORS: Record<number, string> = {
-  1: '#ef4444',
-  2: '#f43f5e',
-  3: '#f97316',
-  4: '#fb923c',
-  5: '#eab308',
-  6: '#a3e635',
-  7: '#84cc16',
-  8: '#4ade80',
-  9: '#22c55e',
-  10: '#10b981',
-};
-
-function getSpectrumColor(ratio: number): string {
-  const clamped = Math.max(0, Math.min(1, ratio));
-  const hue = clamped <= 0.5 ? clamped * 2 * 46 : 46 + (clamped - 0.5) * 2 * 96;
-  return `hsl(${Math.round(hue)}, 84%, 54%)`;
-}
 
 function readSavedPlayerName(): string {
   try {
@@ -148,13 +139,24 @@ export function PlayerSurveyRunner({
     }
     const prev = answers[question.id];
     const currentArr = Array.isArray(prev) ? prev : [];
-    const nextArr = currentArr.includes(optionId)
-      ? currentArr.filter((id) => id !== optionId)
-      : [...currentArr, optionId];
-    setAnswer(question.id, nextArr);
+    if (currentArr.includes(optionId)) {
+      setAnswer(
+        question.id,
+        currentArr.filter((id) => id !== optionId)
+      );
+      return;
+    }
+    if (
+      typeof question.maxSelections === 'number' &&
+      question.maxSelections > 0 &&
+      currentArr.length >= question.maxSelections
+    ) {
+      return;
+    }
+    setAnswer(question.id, [...currentArr, optionId]);
   }
 
-  async function handleNextOrSubmit() {
+  async function handleContinueOrSubmit() {
     const currentQ = survey.questions[questionIndex];
     const currentValue = answers[currentQ.id];
 
@@ -229,11 +231,10 @@ export function PlayerSurveyRunner({
           <div style={{ display: 'flex', justifyContent: 'center' }}>
             <LanguageSwitcher locale={locale} onChange={setLocale} large />
           </div>
-          <div className="player-question-stage" style={{ textAlign: 'center', alignItems: 'center' }}>
+          <div className="story-card" style={{ justifyContent: 'center', textAlign: 'center', alignItems: 'center' }}>
             <h1 className="player-question-title">{t('player.closedTitle')}</h1>
             <p style={{ margin: 0, color: 'var(--text-secondary)' }}>{t('player.closedBody')}</p>
           </div>
-          <div />
         </div>
       </div>
     );
@@ -246,13 +247,12 @@ export function PlayerSurveyRunner({
           <div style={{ display: 'flex', justifyContent: 'center' }}>
             <LanguageSwitcher locale={locale} onChange={setLocale} large />
           </div>
-          <div className="player-question-stage" style={{ textAlign: 'center', alignItems: 'center' }}>
+          <div className="story-card" style={{ justifyContent: 'center', textAlign: 'center', alignItems: 'center' }}>
             <h1 className="player-question-title">{t('player.alreadySubmittedTitle')}</h1>
             <p style={{ margin: 0, color: 'var(--text-secondary)' }}>
               {t('player.alreadySubmittedBody')}
             </p>
           </div>
-          <div />
         </div>
       </div>
     );
@@ -267,67 +267,91 @@ export function PlayerSurveyRunner({
             <LanguageSwitcher locale={locale} onChange={setLocale} large />
           </div>
 
-          <div className="player-question-stage">
-            <div>
-              {survey.teamTag && (
-                <span className="badge badge-accent" style={{ marginBottom: 10 }}>
-                  {survey.teamTag}
-                </span>
-              )}
-              <h1 className="player-question-title">{survey.title}</h1>
-              {survey.description && (
-                <p style={{ margin: '8px 0 0', color: 'var(--text-secondary)', fontSize: 15 }}>
-                  {survey.description}
+          <div className="story-card">
+            <div className="story-card-body" style={{ justifyContent: 'flex-start' }}>
+              <div>
+                {survey.teamTag && (
+                  <span className="badge badge-accent" style={{ marginBottom: 10 }}>
+                    {survey.teamTag}
+                  </span>
+                )}
+                <h1 className="player-question-title">{survey.title}</h1>
+                {survey.description && (
+                  <p style={{ margin: '8px 0 0', color: 'var(--text-secondary)', fontSize: 15 }}>
+                    {survey.description}
+                  </p>
+                )}
+                <p style={{ margin: '8px 0 0', color: 'var(--text-muted)', fontSize: 13 }}>
+                  {t('player.questionsCount', { count: survey.questions.length })}
                 </p>
-              )}
-              <p style={{ margin: '8px 0 0', color: 'var(--text-muted)', fontSize: 13 }}>
-                {t('player.questionsCount', { count: survey.questions.length })}
-              </p>
-            </div>
+              </div>
 
-            <div className="privacy-banner" role="note">
-              <span className="privacy-lock" aria-hidden="true">🔒</span>
-              <span>{t('player.privacyNotice')}</span>
-            </div>
+              <div className="privacy-banner" role="note">
+                <span aria-hidden="true">🔒</span>
+                <span>{t('player.privacyNotice')}</span>
+              </div>
 
-            {hasRoster ? (
-              <div className="field" style={{ gap: 10 }}>
-                <span className="field-label" style={{ fontSize: 14 }}>
-                  {t('player.pickYourName')}
-                </span>
-                <div className="roster-grid" role="group">
-                  {roster.map((name) => {
-                    const selected = selectedRosterChoice === name;
-                    return (
-                      <button
-                        key={name}
-                        type="button"
-                        className={`roster-btn${selected ? ' selected' : ''}`}
-                        onClick={() => {
-                          setSelectedRosterChoice(name);
-                          if (nameError) setNameError(null);
-                        }}
-                        aria-pressed={selected}
-                      >
-                        {name}
-                      </button>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    className={`roster-btn other${selectedRosterChoice === OTHER_PLAYER_SENTINEL ? ' selected' : ''}`}
-                    onClick={() => {
-                      setSelectedRosterChoice(OTHER_PLAYER_SENTINEL);
-                      if (nameError) setNameError(null);
-                    }}
-                    aria-pressed={selectedRosterChoice === OTHER_PLAYER_SENTINEL}
-                  >
-                    {t('player.otherNameOption')}
-                  </button>
+              {hasRoster ? (
+                <div className="field" style={{ gap: 10 }}>
+                  <span className="field-label" style={{ fontSize: 14 }}>
+                    {t('player.pickYourName')}
+                  </span>
+                  <div className="roster-grid" role="group">
+                    {roster.map((name) => {
+                      const selected = selectedRosterChoice === name;
+                      return (
+                        <button
+                          key={name}
+                          type="button"
+                          className={`roster-btn${selected ? ' selected' : ''}`}
+                          onClick={() => {
+                            setSelectedRosterChoice(name);
+                            if (nameError) setNameError(null);
+                          }}
+                          aria-pressed={selected}
+                        >
+                          {name}
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      className={`roster-btn other${selectedRosterChoice === OTHER_PLAYER_SENTINEL ? ' selected' : ''}`}
+                      onClick={() => {
+                        setSelectedRosterChoice(OTHER_PLAYER_SENTINEL);
+                        if (nameError) setNameError(null);
+                      }}
+                      aria-pressed={selectedRosterChoice === OTHER_PLAYER_SENTINEL}
+                    >
+                      {t('player.otherNameOption')}
+                    </button>
+                  </div>
+
+                  {selectedRosterChoice === OTHER_PLAYER_SENTINEL && (
+                    <input
+                      className="input"
+                      style={{ minHeight: 54, fontSize: 17 }}
+                      value={customPlayerName}
+                      onChange={(e) => {
+                        setCustomPlayerName(e.target.value);
+                        if (nameError) setNameError(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleStart();
+                      }}
+                      placeholder={t('player.namePlaceholder')}
+                      autoFocus
+                    />
+                  )}
+                  {nameError && <p className="field-error">{nameError}</p>}
                 </div>
-
-                {selectedRosterChoice === OTHER_PLAYER_SENTINEL && (
+              ) : (
+                <div className="field" style={{ gap: 8 }}>
+                  <label htmlFor="player-real-name" className="field-label" style={{ fontSize: 14 }}>
+                    {t('player.nameLabel')}
+                  </label>
                   <input
+                    id="player-real-name"
                     className="input"
                     style={{ minHeight: 54, fontSize: 17 }}
                     value={customPlayerName}
@@ -339,38 +363,19 @@ export function PlayerSurveyRunner({
                       if (e.key === 'Enter') handleStart();
                     }}
                     placeholder={t('player.namePlaceholder')}
-                    autoFocus
+                    autoFocus={!customPlayerName}
                   />
-                )}
-                {nameError && <p className="field-error">{nameError}</p>}
-              </div>
-            ) : (
-              <div className="field" style={{ gap: 8 }}>
-                <label htmlFor="player-real-name" className="field-label" style={{ fontSize: 14 }}>
-                  {t('player.nameLabel')}
-                </label>
-                <input
-                  id="player-real-name"
-                  className="input"
-                  style={{ minHeight: 54, fontSize: 17 }}
-                  value={customPlayerName}
-                  onChange={(e) => {
-                    setCustomPlayerName(e.target.value);
-                    if (nameError) setNameError(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleStart();
-                  }}
-                  placeholder={t('player.namePlaceholder')}
-                  autoFocus={!customPlayerName}
-                />
-                {nameError && <p className="field-error">{nameError}</p>}
-              </div>
-            )}
-          </div>
+                  {nameError && <p className="field-error">{nameError}</p>}
+                </div>
+              )}
+            </div>
 
-          <div className="player-footer">
-            <button type="button" className="btn btn-primary" onClick={handleStart}>
+            <button
+              type="button"
+              className="btn btn-primary story-cta-btn"
+              disabled={!resolvedPlayerName}
+              onClick={handleStart}
+            >
               {t('player.startAction')}
             </button>
           </div>
@@ -388,26 +393,26 @@ export function PlayerSurveyRunner({
             <LanguageSwitcher locale={locale} onChange={setLocale} large />
           </div>
 
-          <div className="player-question-stage" style={{ textAlign: 'center', alignItems: 'center' }}>
-            <div className="done-check-badge">✓</div>
-            <h1 className="player-question-title">{t('player.thanksTitle')}</h1>
-            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: 16 }}>
-              {t('player.thanksBody')}
-            </p>
-            {!survey.allowMultipleFromSameDevice && !previewMode && (
-              <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 13 }}>
-                {t('player.deviceLockedNote')}
+          <div className="story-card" style={{ justifyContent: 'center', textAlign: 'center', alignItems: 'center' }}>
+            <div className="story-card-body" style={{ alignItems: 'center' }}>
+              <div className="done-check-badge" aria-hidden="true">✓</div>
+              <h1 className="player-question-title">
+                {t('player.donePersonalTitle', { name: resolvedPlayerName })}
+              </h1>
+              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: 16 }}>
+                {t('player.thanksBody')}
               </p>
-            )}
-          </div>
+              {!survey.allowMultipleFromSameDevice && !previewMode && (
+                <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 13 }}>
+                  {t('player.deviceLockedNote')}
+                </p>
+              )}
+            </div>
 
-          <div className="player-footer">
-            {survey.allowMultipleFromSameDevice || previewMode ? (
-              <button type="button" className="btn btn-primary" onClick={handleAnswerAgain}>
+            {(survey.allowMultipleFromSameDevice || previewMode) && (
+              <button type="button" className="btn btn-primary story-cta-btn" onClick={handleAnswerAgain}>
                 {t('player.answerAgain')}
               </button>
-            ) : (
-              <div />
             )}
           </div>
         </div>
@@ -417,255 +422,281 @@ export function PlayerSurveyRunner({
 
   const currentQuestion = survey.questions[questionIndex];
   const currentValue = answers[currentQuestion.id];
-  const progressPct = Math.round(((questionIndex + 1) / survey.questions.length) * 100);
   const isLast = questionIndex === survey.questions.length - 1;
+  const canContinue = canAdvanceQuestion(currentQuestion, currentValue);
 
-  const sliderMin = currentQuestion.min ?? 0;
-  const sliderMax = currentQuestion.max ?? 10;
-  const sliderMid = Math.round(((sliderMin + sliderMax) / 2) * 10) / 10;
-  const hasSliderValue = typeof currentValue === 'number';
-  const sliderValue = hasSliderValue ? currentValue : Math.round((sliderMin + sliderMax) / 2);
-  const sliderRatio =
-    sliderMax > sliderMin ? (sliderValue - sliderMin) / (sliderMax - sliderMin) : 0.5;
-  const sliderColor = getSpectrumColor(sliderRatio);
+  const dialMin = currentQuestion.type === 'rating10' ? 1 : (currentQuestion.min ?? 0);
+  const dialMax = currentQuestion.type === 'rating10' ? 10 : (currentQuestion.max ?? 10);
+  const dialMinLabel =
+    currentQuestion.type === 'rating10'
+      ? `1 · ${t('player.scaleLow')}`
+      : resolveLocalizedText(currentQuestion.minLabel, locale) || String(dialMin);
+  const dialMaxLabel =
+    currentQuestion.type === 'rating10'
+      ? `10 · ${t('player.scaleHigh')}`
+      : resolveLocalizedText(currentQuestion.maxLabel, locale) || String(dialMax);
+
+  const selectedBodyZones = normalizeBodyAnswer(currentValue).filter(isBodyZoneId);
+  const bodyAllClear = isAllClearSelected(currentValue);
+
+  const selectedChoices = Array.isArray(currentValue) ? currentValue : [];
+  const maxSelections = currentQuestion.maxSelections;
+  const limitReached =
+    Boolean(currentQuestion.multiSelect) &&
+    typeof maxSelections === 'number' &&
+    maxSelections > 0 &&
+    selectedChoices.length >= maxSelections;
+
+  const textVal = typeof currentValue === 'string' ? currentValue : '';
 
   return (
     <div className="player-shell">
       {previewBanner}
       <div className="player-container">
-        <div className="player-top">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: 'var(--text-secondary)' }}>
-            <span>
-              {t('player.progress', {
-                current: questionIndex + 1,
-                total: survey.questions.length,
-              })}
-            </span>
-            {!currentQuestion.required && (
-              <span className="badge">{t('player.optionalBadge')}</span>
-            )}
-          </div>
-          <div className="progress-track">
-            <div className="progress-fill" style={{ width: `${progressPct}%` }} />
-          </div>
-        </div>
-
-        <div className="player-question-stage">
-          <h1 className="player-question-title">
-            {resolveLocalizedText(currentQuestion.text, locale)}
-          </h1>
-
-          {currentQuestion.type === 'emoji5' && (
-            <div className="emoji5-grid" role="group">
-              {EMOJI_OPTIONS.map((opt) => {
-                const selected = currentValue === opt.value;
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    className={`emoji5-btn${selected ? ' selected' : ''}`}
-                    style={
-                      selected
-                        ? { borderColor: opt.color, boxShadow: `0 0 0 2px ${opt.color}33` }
-                        : undefined
-                    }
-                    onClick={() => setAnswer(currentQuestion.id, opt.value)}
-                    aria-pressed={selected}
-                  >
-                    <span className="emoji-face">{opt.face}</span>
-                    <span className="emoji-label">{t(opt.labelKey)}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {currentQuestion.type === 'rating10' && (
-            <div className="rating10-stage">
-              <div className="rating10-hero">
-                <span
-                  className="rating10-hero-val"
-                  style={{
-                    color:
-                      typeof currentValue === 'number'
-                        ? RATING10_COLORS[currentValue]
-                        : 'var(--text-muted)',
-                  }}
-                >
-                  {typeof currentValue === 'number' ? currentValue : '—'}
-                </span>
-                <span className="rating10-hero-max">/ 10</span>
-              </div>
-
-              <div className="rating10-grid" role="group">
-                {Array.from({ length: 10 }, (_, i) => i + 1).map((num) => {
-                  const selected = currentValue === num;
-                  const tone = RATING10_COLORS[num];
-                  return (
-                    <button
-                      key={num}
-                      type="button"
-                      className={`rating10-pill${selected ? ' selected' : ''}`}
-                      style={
-                        selected
-                          ? {
-                              backgroundColor: tone,
-                              borderColor: tone,
-                              color: '#08090b',
-                              boxShadow: `0 6px 20px ${tone}44`,
-                            }
-                          : {
-                              borderColor: `${tone}44`,
-                            }
-                      }
-                      onClick={() => setAnswer(currentQuestion.id, num)}
-                      aria-pressed={selected}
-                    >
-                      <span className="rating10-num">{num}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="scale-legend">
-                <span>1 · {t('player.scaleLow')}</span>
-                <span>10 · {t('player.scaleHigh')}</span>
-              </div>
-            </div>
-          )}
-
-          {currentQuestion.type === 'slider' && (
-            <div className="slider-stage">
+        {/* Stories Segmented Top Bar */}
+        <header className="stories-header">
+          <div
+            className="stories-segments"
+            style={{ gridTemplateColumns: `repeat(${survey.questions.length}, 1fr)` }}
+            aria-hidden="true"
+          >
+            {survey.questions.map((q, idx) => (
               <div
-                className="slider-value-badge"
-                style={{
-                  color: hasSliderValue ? sliderColor : 'var(--text-muted)',
-                  borderColor: hasSliderValue ? sliderColor : 'var(--border-strong)',
-                }}
-              >
-                {hasSliderValue ? sliderValue : '—'}
-              </div>
-
-              {!hasSliderValue && (
-                <div style={{ textAlign: 'center', fontSize: 12.5, color: 'var(--text-muted)' }}>
-                  {t('player.sliderTouchHint')}
-                </div>
-              )}
-
-              <div className="gradient-slider-wrap">
-                <input
-                  type="range"
-                  className="gradient-slider"
-                  min={sliderMin}
-                  max={sliderMax}
-                  step={1}
-                  value={sliderValue}
-                  onChange={(e) => setAnswer(currentQuestion.id, Number(e.target.value))}
-                  onPointerDown={() => {
-                    if (!hasSliderValue) {
-                      setAnswer(currentQuestion.id, sliderValue);
-                    }
-                  }}
-                />
-                <div className="slider-ruler" aria-hidden="true">
-                  <span>{sliderMin}</span>
-                  <span className="slider-ruler-mid">{sliderMid}</span>
-                  <span>{sliderMax}</span>
-                </div>
-              </div>
-
-              {(resolveLocalizedText(currentQuestion.minLabel, locale) ||
-                resolveLocalizedText(currentQuestion.maxLabel, locale)) && (
-                <div className="slider-endpoints">
-                  <span>{resolveLocalizedText(currentQuestion.minLabel, locale)}</span>
-                  <span>{resolveLocalizedText(currentQuestion.maxLabel, locale)}</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {currentQuestion.type === 'choice' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {currentQuestion.multiSelect && (
-                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                  {t('player.multiChoiceHint')}
-                </div>
-              )}
-              <div className="choice-list" role="group">
-                {(currentQuestion.options || []).map((opt) => {
-                  const selected = currentQuestion.multiSelect
-                    ? Array.isArray(currentValue) && currentValue.includes(opt.id)
-                    : currentValue === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      className={`choice-btn${selected ? ' selected' : ''}`}
-                      onClick={() => toggleChoiceOption(currentQuestion, opt.id)}
-                      aria-pressed={selected}
-                    >
-                      <span>{resolveLocalizedText(opt.label, locale)}</span>
-                      <span className="choice-indicator" aria-hidden="true">
-                        {selected ? '✓' : ''}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {currentQuestion.type === 'text' &&
-            (currentQuestion.multiline ? (
-              <textarea
-                className="textarea"
-                style={{ minHeight: 140, fontSize: 16 }}
-                value={typeof currentValue === 'string' ? currentValue : ''}
-                onChange={(e) => setAnswer(currentQuestion.id, e.target.value)}
-                placeholder={t('player.textPlaceholder')}
-              />
-            ) : (
-              <input
-                className="input"
-                style={{ minHeight: 54, fontSize: 16 }}
-                value={typeof currentValue === 'string' ? currentValue : ''}
-                onChange={(e) => setAnswer(currentQuestion.id, e.target.value)}
-                placeholder={t('player.textPlaceholder')}
+                key={q.id}
+                className={`story-seg${idx < questionIndex ? ' done' : idx === questionIndex ? ' current' : ''}`}
               />
             ))}
+          </div>
 
-          {stepError && <p className="field-error">{stepError}</p>}
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {isLast && (
-            <div className="privacy-subtle" role="note">
-              🔒 {t('player.privacyNotice')}
-            </div>
-          )}
-
-          <div className="player-footer">
+          <div className="stories-nav-row">
             <button
               type="button"
-              className="btn btn-secondary"
+              className="story-back-btn"
               onClick={() => {
                 setStepError(null);
                 if (questionIndex === 0) setPhase('welcome');
                 else setQuestionIndex((i) => i - 1);
               }}
+              aria-label={t('player.previous')}
             >
-              {t('player.previous')}
+              ←
             </button>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-secondary)' }}>
+              {t('player.progress', {
+                current: questionIndex + 1,
+                total: survey.questions.length,
+              })}
+            </span>
+            {!currentQuestion.required ? (
+              <span className="badge">{t('player.optionalBadge')}</span>
+            ) : (
+              <span style={{ width: 44 }} />
+            )}
+          </div>
+        </header>
+
+        {/* Full-Screen Centered Story Card */}
+        <div className="story-card">
+          <div className="story-card-body">
+            <h1 className="player-question-title">
+              {resolveLocalizedText(currentQuestion.text, locale)}
+            </h1>
+
+            {currentQuestion.type === 'emoji5' && (
+              <div className="emoji5-grid" role="group">
+                {EMOJI_OPTIONS.map((opt) => {
+                  const selected = currentValue === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      className={`emoji5-btn${selected ? ' selected' : ''}`}
+                      style={
+                        selected
+                          ? { borderColor: opt.color, boxShadow: `0 0 0 2px ${opt.color}33` }
+                          : undefined
+                      }
+                      onClick={() => setAnswer(currentQuestion.id, opt.value)}
+                      aria-pressed={selected}
+                    >
+                      <span className="emoji-face">{opt.face}</span>
+                      <span className="emoji-label">{t(opt.labelKey)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {(currentQuestion.type === 'rating10' || currentQuestion.type === 'slider') && (
+              <SemicircularDial
+                min={dialMin}
+                max={dialMax}
+                value={typeof currentValue === 'number' ? currentValue : undefined}
+                polarity={currentQuestion.polarity || 'positive'}
+                minLabel={dialMinLabel}
+                maxLabel={dialMaxLabel}
+                hintText={t('player.sliderTouchHint')}
+                translateLevel={(k) => t(k)}
+                onChange={(val) => setAnswer(currentQuestion.id, val)}
+              />
+            )}
+
+            {currentQuestion.type === 'bodymap' && (
+              <div className="bodymap-wrap">
+                <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                  {t('body.tapZoneHint')}
+                </p>
+
+                <BodyMapSvg
+                  mode="select"
+                  selectedZones={selectedBodyZones}
+                  frontLabel={t('body.front')}
+                  backLabel={t('body.backView')}
+                  sideRightLabel={t('body.sideRight')}
+                  sideLeftLabel={t('body.sideLeft')}
+                  getZoneLabel={(zoneId: BodyZoneId) => t(`body.${zoneId}` as TranslationKey)}
+                  onToggleZone={(zoneId) =>
+                    setAnswer(currentQuestion.id, toggleBodyZoneSelection(currentValue, zoneId))
+                  }
+                />
+
+                {selectedBodyZones.length > 0 && (
+                  <div className="chip-strip">
+                    {selectedBodyZones.map((zoneId) => (
+                      <button
+                        key={zoneId}
+                        type="button"
+                        className="chip coral active"
+                        onClick={() =>
+                          setAnswer(
+                            currentQuestion.id,
+                            toggleBodyZoneSelection(currentValue, zoneId as BodyZoneId)
+                          )
+                        }
+                      >
+                        <span>{t(`body.${zoneId}` as TranslationKey)}</span>
+                        <span>✕</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  className={`all-clear-btn${bodyAllClear ? ' active' : ''}`}
+                  onClick={() => setAnswer(currentQuestion.id, selectBodyAllClear())}
+                  aria-pressed={bodyAllClear}
+                >
+                  <span>{bodyAllClear ? '✓' : '○'}</span>
+                  <span>{t('body.allClear')}</span>
+                </button>
+              </div>
+            )}
+
+            {currentQuestion.type === 'choice' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {currentQuestion.multiSelect && (
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>
+                    {typeof maxSelections === 'number' && maxSelections > 0
+                      ? t('player.maxSelectionsHint', { max: maxSelections })
+                      : t('player.multiChoiceHint')}
+                  </div>
+                )}
+                <div className="choice-list" role="group">
+                  {(currentQuestion.options || []).map((opt) => {
+                    const selected = currentQuestion.multiSelect
+                      ? selectedChoices.includes(opt.id)
+                      : currentValue === opt.id;
+                    const disabled = Boolean(currentQuestion.multiSelect && limitReached && !selected);
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        className={`choice-btn${selected ? ' selected' : ''}`}
+                        disabled={disabled}
+                        onClick={() => toggleChoiceOption(currentQuestion, opt.id)}
+                        aria-pressed={selected}
+                      >
+                        <span>{resolveLocalizedText(opt.label, locale)}</span>
+                        <span className="choice-indicator" aria-hidden="true">
+                          {selected ? '✓' : ''}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {currentQuestion.type === 'text' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {Array.isArray(currentQuestion.quickChips) && currentQuestion.quickChips.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                      {t('player.quickChipsHint')}
+                    </span>
+                    <div className="chip-strip">
+                      {currentQuestion.quickChips.map((chip) => {
+                        const active = isQuickChipActiveInText(textVal, chip);
+                        return (
+                          <button
+                            key={chip}
+                            type="button"
+                            className={`chip${active ? ' active' : ''}`}
+                            onClick={() =>
+                              setAnswer(currentQuestion.id, toggleQuickChipInText(textVal, chip))
+                            }
+                            aria-pressed={active}
+                          >
+                            {active ? `✓ ${chip}` : `+ ${chip}`}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {currentQuestion.multiline ? (
+                  <textarea
+                    className="textarea"
+                    style={{ minHeight: 130, fontSize: 16 }}
+                    value={textVal}
+                    onChange={(e) => setAnswer(currentQuestion.id, e.target.value)}
+                    placeholder={t('player.textPlaceholder')}
+                  />
+                ) : (
+                  <input
+                    className="input"
+                    style={{ minHeight: 54, fontSize: 16 }}
+                    value={textVal}
+                    onChange={(e) => setAnswer(currentQuestion.id, e.target.value)}
+                    placeholder={t('player.textPlaceholder')}
+                  />
+                )}
+              </div>
+            )}
+
+            {stepError && <p className="field-error">{stepError}</p>}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {isLast && (
+              <div className="privacy-subtle" role="note">
+                🔒 {t('player.privacyNotice')}
+              </div>
+            )}
+
             <button
               type="button"
-              className="btn btn-primary"
-              disabled={submitting}
-              onClick={handleNextOrSubmit}
+              className="btn btn-primary story-cta-btn"
+              disabled={!canContinue || submitting}
+              onClick={handleContinueOrSubmit}
             >
               {submitting
                 ? t('player.submitting')
                 : isLast
                   ? t('player.submit')
-                  : t('player.next')}
+                  : t('player.continue')}
             </button>
           </div>
         </div>
@@ -720,11 +751,10 @@ export function PlayerSurveyView() {
           <div style={{ display: 'flex', justifyContent: 'center' }}>
             <LanguageSwitcher locale={locale} onChange={setLocale} large />
           </div>
-          <div className="player-question-stage" style={{ textAlign: 'center', alignItems: 'center' }}>
+          <div className="story-card" style={{ justifyContent: 'center', textAlign: 'center', alignItems: 'center' }}>
             <h1 className="player-question-title">{t('player.notFoundTitle')}</h1>
             <p style={{ margin: 0, color: 'var(--text-secondary)' }}>{t('player.notFoundBody')}</p>
           </div>
-          <div />
         </div>
       </div>
     );

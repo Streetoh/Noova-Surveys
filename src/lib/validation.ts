@@ -1,4 +1,5 @@
 import type { AnswerValue, ChoiceOption, Locale, LocalizedText, Question, Survey } from '../types/survey.ts';
+import { isBodyMapAnswered } from './bodymap.ts';
 
 export function resolveLocalizedText(text: LocalizedText | undefined, locale: Locale): string {
   if (!text) return '';
@@ -50,10 +51,21 @@ export function isAnswerProvided(question: Question, value: AnswerValue | undefi
   if (question.type === 'text') {
     return typeof value === 'string' && value.trim().length > 0;
   }
+  if (question.type === 'bodymap') {
+    return isBodyMapAnswered(value);
+  }
   if (question.type === 'choice') {
     const validIds = new Set((question.options || []).map((o) => o.id));
     if (question.multiSelect) {
-      return Array.isArray(value) && value.length > 0 && value.every((id) => validIds.has(id));
+      if (!Array.isArray(value) || value.length === 0) return false;
+      if (
+        typeof question.maxSelections === 'number' &&
+        question.maxSelections > 0 &&
+        value.length > question.maxSelections
+      ) {
+        return false;
+      }
+      return value.every((id) => validIds.has(id));
     }
     if (typeof value === 'string') {
       return value.trim().length > 0 && validIds.has(value);

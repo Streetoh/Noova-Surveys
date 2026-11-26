@@ -14,14 +14,14 @@
 ├── scripts/
 │   └── check-locales.mjs         # Validates et/en/ru/es key parity & non-empty values
 └── src/
-    ├── types/survey.ts           # Core TypeScript data models
+    ├── types/survey.ts           # Core TypeScript data models (incl. bodymap, polarity, quickChips, maxSelections)
     ├── i18n/                     # et.ts (master type), en.ts, ru.ts, es.ts, index.ts, i18n.test.ts
-    ├── lib/                      # Pure domain modules + sibling *.test.ts
-    ├── services/                 # Firebase init & isolated surveysRepo (surveys, survey_responses, survey_teams)
+    ├── lib/                      # Pure domain modules (analytics, bodymap, dial, roster, validation, templates, antispam) + *.test.ts
+    ├── services/                 # Firebase init (IndexedDB cache) & isolated surveysRepo (surveys, survey_responses, survey_teams)
     ├── store/                    # Zustand store for language, PIN lock & ephemeral toasts
-    ├── styles/                   # tokens.css & global.css (Linear × Hevy dark obsidian + cobalt)
-    ├── components/               # Reusable UI components & QR Share modal
-    └── views/                    # Coach views (PIN-gated) & isolated PlayerSurveyView
+    ├── styles/                   # tokens.css & global.css (Athletic Volt dark palette)
+    ├── components/               # CoachShell (topbar + Bottom Dock), SemicircularDial, BodyMapSvg, ShareSurveyModal, ConfirmModal
+    └── views/                    # Coach views (PIN-gated) & Stories-mode PlayerSurveyView
 ```
 
 ## 2. Core Data Models (`src/types/survey.ts`)
@@ -45,7 +45,7 @@
   description: string;
   teamTag: string;
   teamId?: string;
-  teamRosterSnapshot?: string[];   // Denormalized roster so Player view stays 1 getDoc
+  teamRosterSnapshot?: string[];   // Denormalized roster so Player & Results stay 1 getDoc
   closesAt?: number | null;        // Optional automatic close timestamp
   status: 'draft' | 'active' | 'closed';
   isTemplate: boolean;
@@ -57,12 +57,14 @@
 }
 ```
 
-### Question Types
-- `text` (`multiline: boolean`)
-- `slider` (`min: number` default `0`, `max: number` default `10`, centered midpoint, Red→Amber→Green gradient)
-- `rating10` (progressive semantic color 1–10 scale)
-- `emoji5` (5 expressive faces mapped to 1–5)
-- `choice` (`multiSelect?: boolean`, `options: ChoiceOption[]` with Yes/No preset)
+### Question Types & Options
+- `text`: optional `multiline` + `quickChips?: string[]` (tappable chips appended/removed from answer)
+- `slider`: interactive Semicircular Dial (`min` default `1`, `max` default `10`, `minLabel`, `maxLabel`, `polarity`)
+- `rating10`: interactive Semicircular Dial (`1–10`, `polarity`)
+- `emoji5`: 5 expressive faces mapped to `1–5` (`polarity`)
+- `choice`: `multiSelect?: boolean`, `maxSelections?: number | null` ("Top N" limit), `options: ChoiceOption[]`
+- `bodymap`: Dual Front/Back SVG silhouettes with 15 anatomical zones (`shoulder_r/l`, `back`, `hip_r/l`, `quad_r/l`, `hamstring_r/l`, `knee_r/l`, `calf_r/l`, `ankle_r/l`) + `"none"` (All good)
+- Each numeric question supports `polarity?: 'positive' | 'inverse' | 'neutral'` and `highlightInSummary?: boolean`.
 - Each question supports `text: { et: string; en?: string; ru?: string; es?: string }` with automatic fallback.
 
 ### Firestore Collection: `survey_responses`
@@ -70,26 +72,29 @@
 {
   id: string;
   surveyId: string;
-  respondentName: string;          // Player real name (saved locally when not shared-device)
+  respondentName: string;          // Player real name
   locale: 'et' | 'en' | 'ru' | 'es';
-  answers: Record<string, string | number>;
+  answers: Record<string, string | number | string[]>;
   submittedAt: number;
 }
 ```
 
 ## 3. Firebase Isolation & Read Optimization
-- Connects via `import.meta.env.VITE_FIREBASE_*` to the existing `Player-stats` project.
-- Touches **only** `surveys` and `survey_responses`.
-- `CoachDashboardView` subscribes to `surveys` only while mounted; `SurveyResultsView` subscribes to `survey_responses` filtered by `where('surveyId', '==', id)` only while mounted.
-- `PlayerSurveyView` performs 1 `getDoc` on load and 1 `addDoc` + atomic `increment(1)` on `surveys/{id}.responseCount` on submit.
-- When `.env` is not yet configured (local preview without Firebase keys), `surveysRepo` gracefully falls back to a local browser storage adapter and shows a clear configuration banner in the Coach panel.
+- Connects via `import.meta.env.VITE_FIREBASE_*` to the `Player-stats` project with persistent IndexedDB cache (`persistentLocalCache` + `persistentMultipleTabManager`).
+- Touches **only** `surveys`, `survey_responses`, and `survey_teams`.
+- **Zero listeners on Coach Dashboard / Editor / Teams / Player views** (all use one-shot `getDocs` / `getDoc`).
+- **Scoped real-time listener**: `SurveyResultsView` opens `onSnapshot` ONLY while `!isSurveyEffectivelyClosed(survey)`; closed or expired surveys use one-shot `getDocs`.
+- `PlayerSurveyView` performs 1 `getDoc` on load (including `teamRosterSnapshot`) and 1 `addDoc` + atomic `increment(1)` on `surveys/{id}.responseCount` on submit.
 
-## 4. Visual System Tokens
-- Dark obsidian base (`#0b0c0e`, `#111317`, `#171a21`), hairline 1px dividers (`rgba(255,255,255,0.08)`), electric cobalt accent (`#3b82f6`).
-- 2-column desktop workbench (`>= 1024px`) for Coach Dashboard, Survey Editor, and Live Results; mobile-first single-column touch-friendly flow (`>= 44px` targets, oversized `56px+` controls for kids/teens on Player screens).
+## 4. Visual System Tokens (Athletic Volt)
+- High-contrast dark base (`#0B0E14`), card surface (`#141923`), electric lime primary accent (`#B8FF2C`), alert/discomfort coral (`#FF5A5F`).
+- **Coach**: Minimal top bar (`<- Back`, title, `ET/EN/RU/ES`, Lock) + fixed 3-tab Bottom Dock (**Surveys**, **Teams**, **Settings**).
+- **Editor**: Title + Team header, closed-by-default `"More options"` accordion, horizontal swipeable question carousel + `+` FAB + Bottom Sheet, sticky `"Activate & share"` footer.
+- **Player**: Stories-mode full-screen card with segmented top bar, manual **"Continue" / "Submit"** button, Semicircular Dial, Dual Body Map, and lime confirmation check.
+- **Results**: Top Bento Grid (clickable circular participation ring + independent per-question KPI cards, never cross-question averages), compact vertical bar histograms, 100%-width horizontal choice bars, and Body Map team heatmap.
 
 ## 5. Testing & Verification Strategy
-- `npx tsc --noEmit` — Enforces strict `Translations` parity across `et`, `en`, and `ru` plus full type safety.
-- `npm test` — Vitest unit tests for `analytics`, `validation`, `antispam`, `nicknames`, and `i18n`.
-- `npm run check:locales` — CLI verification of `et`/`en`/`ru` parity.
+- `npx tsc --noEmit` — Enforces strict `Translations` parity across `et`, `en`, `ru`, and `es` plus full type safety.
+- `npm test` — Vitest unit tests (`analytics`, `bodymap`, `dial`, `validation`, `roster`, `antispam`, `i18n`).
+- `npm run check:locales` — CLI verification of `et`/`en`/`ru`/`es` parity.
 - `npm run build` — Verifies clean GitHub Pages bundle with relative asset paths (`base: './'`).

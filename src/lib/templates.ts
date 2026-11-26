@@ -33,14 +33,25 @@ export function createEmptyQuestion(type: Question['type'] = 'rating10'): Questi
   };
   if (type === 'text') {
     base.multiline = false;
+    base.quickChips = [];
   } else if (type === 'slider') {
     base.min = 0;
     base.max = 10;
+    base.polarity = 'positive';
     base.minLabel = { et: '', en: '', ru: '', es: '' };
     base.maxLabel = { et: '', en: '', ru: '', es: '' };
+  } else if (type === 'rating10' || type === 'emoji5') {
+    base.polarity = 'positive';
   } else if (type === 'choice') {
     base.multiSelect = false;
     base.options = createYesNoOptions();
+  } else if (type === 'bodymap') {
+    base.text = {
+      et: 'Kas tunned kuskil valu või ebamugavust?',
+      en: 'Do you feel any pain or discomfort anywhere?',
+      ru: 'Чувствуешь ли ты где-нибудь боль или дискомфорт?',
+      es: '¿Tienes alguna molestia o dolor hoy?',
+    };
   }
   return base;
 }
@@ -58,6 +69,8 @@ export const STARTER_TEMPLATES: Omit<Survey, 'id' | 'createdAt' | 'updatedAt' | 
         id: 'tpl_tr_1',
         type: 'emoji5',
         required: true,
+        highlightInSummary: true,
+        polarity: 'positive',
         text: {
           et: 'Kuidas sa end pärast tänast trenni tunned?',
           en: 'How do you feel after today’s training?',
@@ -69,26 +82,24 @@ export const STARTER_TEMPLATES: Omit<Survey, 'id' | 'createdAt' | 'updatedAt' | 
         id: 'tpl_tr_2',
         type: 'rating10',
         required: true,
+        highlightInSummary: true,
+        polarity: 'inverse',
         text: {
-          et: 'Kui raske tänane trenn sinu jaoks oli? (1 = väga kerge, 10 = maksimaalne)',
-          en: 'How hard was today’s session? (1 = very easy, 10 = maximum)',
-          ru: 'Насколько тяжёлой была тренировка? (1 = очень лёгкая, 10 = максимум)',
-          es: '¿Qué tan duro fue el entrenamiento hoy? (1 = muy suave, 10 = máximo)',
+          et: 'Kui raske tänane trenn sinu jaoks oli?',
+          en: 'How hard was today’s session?',
+          ru: 'Насколько тяжёлой была тренировка?',
+          es: '¿Qué tan duro fue el entrenamiento hoy?',
         },
       },
       {
         id: 'tpl_tr_3',
-        type: 'slider',
+        type: 'bodymap',
         required: true,
-        min: 0,
-        max: 10,
-        minLabel: { et: 'Üldse mitte', en: 'Not at all', ru: 'Совсем нет', es: 'Nada' },
-        maxLabel: { et: 'Väga palju', en: 'Very much', ru: 'Очень сильно', es: 'Muchísimo' },
         text: {
-          et: 'Kui palju sa täna trennist rõõmu tundsid?',
-          en: 'How much did you enjoy training today?',
-          ru: 'Насколько тебе понравилась сегодняшняя тренировка?',
-          es: '¿Cuánto disfrutaste del entrenamiento de hoy?',
+          et: 'Kas tunned kuskil valu või ebamugavust?',
+          en: 'Do you feel any pain or discomfort?',
+          ru: 'Чувствуешь ли ты где-нибудь боль или дискомфорт?',
+          es: '¿Tienes alguna molestia o dolor tras el entreno?',
         },
       },
       {
@@ -96,11 +107,12 @@ export const STARTER_TEMPLATES: Omit<Survey, 'id' | 'createdAt' | 'updatedAt' | 
         type: 'text',
         required: false,
         multiline: true,
+        quickChips: ['1v1', 'Löömine', 'Söödud', 'Mäng'],
         text: {
-          et: 'Mis läks hästi või mida tahaksid järgmisel korral harjutada?',
-          en: 'What went well or what would you like to practice next?',
-          ru: 'Что получилось хорошо или что хочешь потренировать в следующий раз?',
-          es: '¿Qué salió bien o qué te gustaría practicar en el próximo entreno?',
+          et: 'Mis meeldis kõige rohkem või mida tahaksid järgmisel korral harjutada?',
+          en: 'What did you enjoy most or want to practice next?',
+          ru: 'Что понравилось больше всего или что хочешь потренировать дальше?',
+          es: '¿Qué te gustó más o qué quieres practicar en el próximo entreno?',
         },
       },
     ],
@@ -117,6 +129,8 @@ export const STARTER_TEMPLATES: Omit<Survey, 'id' | 'createdAt' | 'updatedAt' | 
         id: 'tpl_m_1',
         type: 'emoji5',
         required: true,
+        highlightInSummary: true,
+        polarity: 'positive',
         text: {
           et: 'Milline tunne jäi tänasest mängust?',
           en: 'How do you feel about today’s match?',
@@ -128,17 +142,20 @@ export const STARTER_TEMPLATES: Omit<Survey, 'id' | 'createdAt' | 'updatedAt' | 
         id: 'tpl_m_2',
         type: 'rating10',
         required: true,
+        highlightInSummary: true,
+        polarity: 'positive',
         text: {
-          et: 'Hinda oma pingutust ja keskendumist väljakul (1–10)',
-          en: 'Rate your effort and focus on the pitch (1–10)',
-          ru: 'Оцени свою самоотдачу и концентрацию на поле (1–10)',
-          es: 'Valora tu esfuerzo y concentración en el campo (1–10)',
+          et: 'Hinda oma pingutust ja keskendumist väljakul',
+          en: 'Rate your effort and focus on the pitch',
+          ru: 'Оцени свою самоотдачу и концентрацию на поле',
+          es: 'Valora tu esfuerzo y concentración en el campo',
         },
       },
       {
         id: 'tpl_m_3',
         type: 'slider',
         required: true,
+        polarity: 'positive',
         min: 0,
         max: 10,
         minLabel: { et: 'Nõrk', en: 'Low', ru: 'Слабо', es: 'Flojo' },
@@ -155,6 +172,7 @@ export const STARTER_TEMPLATES: Omit<Survey, 'id' | 'createdAt' | 'updatedAt' | 
         type: 'text',
         required: false,
         multiline: false,
+        quickChips: ['Kaitse', 'Rünnak', 'Suhtlus', 'Kiirus'],
         text: {
           et: 'Üks asi, mida tahaksid järgmises mängus paremini teha:',
           en: 'One thing you want to do better in the next match:',
@@ -176,6 +194,8 @@ export const STARTER_TEMPLATES: Omit<Survey, 'id' | 'createdAt' | 'updatedAt' | 
         id: 'tpl_g_1',
         type: 'emoji5',
         required: true,
+        highlightInSummary: true,
+        polarity: 'positive',
         text: {
           et: 'Milline on sinu tuju täna trenni tulles?',
           en: 'What is your mood coming to training today?',
@@ -187,10 +207,12 @@ export const STARTER_TEMPLATES: Omit<Survey, 'id' | 'createdAt' | 'updatedAt' | 
         id: 'tpl_g_2',
         type: 'slider',
         required: true,
+        highlightInSummary: true,
+        polarity: 'positive',
         min: 0,
         max: 10,
         minLabel: { et: 'Väsinud', en: 'Tired', ru: 'Устал', es: 'Cansado' },
-        maxLabel: { et: 'Täis energiat', en: 'Full energy', ru: 'Полон сил', es: 'A tope de energía' },
+        maxLabel: { et: 'Täis energiat', en: 'Full energy', ru: 'Полон сил', es: 'A tope' },
         text: {
           et: 'Kui palju energiat sul täna on?',
           en: 'How much energy do you have today?',
@@ -200,13 +222,8 @@ export const STARTER_TEMPLATES: Omit<Survey, 'id' | 'createdAt' | 'updatedAt' | 
       },
       {
         id: 'tpl_g_3',
-        type: 'choice',
+        type: 'bodymap',
         required: true,
-        multiSelect: false,
-        options: [
-          { id: 'opt_yes', label: { et: 'Jah', en: 'Yes', ru: 'Да', es: 'Sí' } },
-          { id: 'opt_no', label: { et: 'Ei', en: 'No', ru: 'Нет', es: 'No' } },
-        ],
         text: {
           et: 'Kas tunned kuskil valu või ebamugavust?',
           en: 'Do you feel any pain or discomfort anywhere?',
@@ -238,6 +255,7 @@ export function cloneSurveyAsNew(
       };
       if (q.minLabel) nextQ.minLabel = { ...q.minLabel };
       if (q.maxLabel) nextQ.maxLabel = { ...q.maxLabel };
+      if (q.quickChips) nextQ.quickChips = [...q.quickChips];
       if (q.options) {
         nextQ.options = q.options.map((opt) => ({
           id: generateId('opt'),

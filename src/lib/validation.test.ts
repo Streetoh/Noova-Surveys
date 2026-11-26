@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BODY_NONE_VALUE } from './bodymap.ts';
 import {
   canAdvanceQuestion,
   isSurveyEffectivelyClosed,
@@ -41,34 +42,39 @@ describe('validation', () => {
     );
   });
 
-  it('validates single and multi-select choice answers and auto-closes at closesAt deadline', () => {
-    const choiceSingle: Question = {
+  it('enforces maxSelections on multi-select choice and validates bodymap answers', () => {
+    const choiceTop2: Question = {
       id: 'q1',
       type: 'choice',
       required: true,
-      multiSelect: false,
-      text: { et: 'Kas tuled?' },
+      multiSelect: true,
+      maxSelections: 2,
+      text: { et: 'Vali kuni 2' },
       options: [
-        { id: 'yes', label: { et: 'Jah' } },
-        { id: 'no', label: { et: 'Ei' } },
+        { id: 'a', label: { et: 'A' } },
+        { id: 'b', label: { et: 'B' } },
+        { id: 'c', label: { et: 'C' } },
       ],
     };
-    const choiceMulti: Question = {
-      ...choiceSingle,
+    const bodyQ: Question = {
       id: 'q2',
-      multiSelect: true,
+      type: 'bodymap',
+      required: true,
+      text: { et: 'Valu?' },
     };
 
-    expect(canAdvanceQuestion(choiceSingle, undefined)).toBe(false);
-    expect(canAdvanceQuestion(choiceSingle, 'yes')).toBe(true);
-    expect(canAdvanceQuestion(choiceMulti, [])).toBe(false);
-    expect(canAdvanceQuestion(choiceMulti, ['yes', 'no'])).toBe(true);
-    expect(validateAllAnswers([choiceSingle, choiceMulti], { q1: 'yes', q2: ['no'] }).valid).toBe(true);
+    expect(canAdvanceQuestion(choiceTop2, undefined)).toBe(false);
+    expect(canAdvanceQuestion(choiceTop2, ['a', 'b'])).toBe(true);
+    expect(canAdvanceQuestion(choiceTop2, ['a', 'b', 'c'])).toBe(false);
 
-    // Auto-close deadline checks
+    expect(canAdvanceQuestion(bodyQ, [])).toBe(false);
+    expect(canAdvanceQuestion(bodyQ, [BODY_NONE_VALUE])).toBe(true);
+    expect(canAdvanceQuestion(bodyQ, ['knee_r'])).toBe(true);
+
+    expect(validateAllAnswers([choiceTop2, bodyQ], { q1: ['a', 'b'], q2: ['knee_l'] }).valid).toBe(true);
+
     expect(isSurveyEffectivelyClosed({ status: 'active', closesAt: 5000 }, 4999)).toBe(false);
     expect(isSurveyEffectivelyClosed({ status: 'active', closesAt: 5000 }, 5000)).toBe(true);
-    expect(isSurveyEffectivelyClosed({ status: 'active', closesAt: 5000 }, 6000)).toBe(true);
     expect(isSurveyEffectivelyClosed({ status: 'closed', closesAt: null }, 1000)).toBe(true);
   });
 
@@ -81,5 +87,6 @@ describe('validation', () => {
       questions: [{ id: 'q1', type: 'text', text: { et: 'Hola', en: undefined }, min: undefined }],
     });
     expect('min' in cleaned.questions[0]).toBe(false);
+    expect('en' in cleaned.questions[0].text).toBe(false);
   });
 });

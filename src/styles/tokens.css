@@ -1,30 +1,30 @@
 :root,
 [data-theme='dark'] {
   color-scheme: dark;
-  --bg: #0b0c0e;
-  --surface: #111317;
-  --surface-elevated: #171a21;
-  --surface-hover: #1d212b;
+  --bg: #0B0E14;
+  --surface: #141923;
+  --surface-elevated: #1A2130;
+  --surface-hover: #212A3D;
 
-  --text-primary: #f4f5f7;
-  --text-secondary: #a1a8b5;
-  --text-muted: #707887;
+  --text-primary: #F5F7FA;
+  --text-secondary: #A6B1C4;
+  --text-muted: #707C91;
 
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
-  --accent-text: #ffffff;
-  --accent-soft: rgba(59, 130, 246, 0.14);
+  --accent: #B8FF2C;
+  --accent-hover: #A5EC1C;
+  --accent-text: #0B0E14;
+  --accent-soft: rgba(184, 255, 44, 0.14);
 
-  --success: #22c55e;
-  --success-soft: rgba(34, 197, 94, 0.14);
-  --warning: #eab308;
-  --warning-soft: rgba(234, 179, 8, 0.14);
-  --danger: #f43f5e;
-  --danger-soft: rgba(244, 63, 94, 0.14);
+  --success: #B8FF2C;
+  --success-soft: rgba(184, 255, 44, 0.14);
+  --warning: #F59E0B;
+  --warning-soft: rgba(245, 158, 11, 0.15);
+  --danger: #FF5A5F;
+  --danger-soft: rgba(255, 90, 95, 0.16);
 
   --border: rgba(255, 255, 255, 0.08);
   --border-strong: rgba(255, 255, 255, 0.16);
-  --shadow-md: 0 16px 40px rgba(0, 0, 0, 0.55);
+  --shadow-md: 0 18px 44px rgba(0, 0, 0, 0.58);
 }
 
 :root {
@@ -39,11 +39,12 @@
   --space-6: 24px;
   --space-8: 32px;
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
   --radius-full: 999px;
 
   --touch-min: 44px;
-  --topbar-height: 54px;
+  --topbar-height: 56px;
+  --dock-height: 68px;
 }

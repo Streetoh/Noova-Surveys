@@ -127,10 +127,6 @@ export function CoachTeamsView() {
 
   return (
     <section>
-      <header className="page-header">
-        <h1 className="page-title">{t('teams.title')}</h1>
-      </header>
-
       <form
         className="surface-section"
         style={{ padding: 14, marginBottom: 16, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}

@@ -1,4 +1,11 @@
 import type { AnswerValue, Locale, Question, Survey, SurveyResponse } from '../types/survey.ts';
+import {
+  BODY_NONE_VALUE,
+  computeBodyMapHeatmap,
+  isBodyZoneId,
+  normalizeBodyAnswer,
+  type BodyMapHeatmapStats,
+} from './bodymap.ts';
 import { resolveLocalizedText } from './validation.ts';
 
 export interface DistributionBucket {
@@ -45,7 +52,15 @@ export interface TextQuestionStats {
   entries: TextResponseEntry[];
 }
 
-export type QuestionStats = NumericQuestionStats | ChoiceQuestionStats | TextQuestionStats;
+export interface BodyMapQuestionStats extends BodyMapHeatmapStats {
+  type: 'bodymap';
+}
+
+export type QuestionStats =
+  | NumericQuestionStats
+  | ChoiceQuestionStats
+  | TextQuestionStats
+  | BodyMapQuestionStats;
 
 export function calculateAverage(values: number[]): number | null {
   if (values.length === 0) return null;
@@ -62,14 +77,28 @@ function extractSelectedOptionIds(raw: AnswerValue | undefined): string[] {
 export function formatAnswerForDisplay(
   question: Question,
   raw: AnswerValue | undefined,
-  locale: Locale
+  locale: Locale,
+  translateZone?: (key: string) => string
 ): string {
   if (raw === undefined || raw === null || raw === '') return '—';
   if (question.type === 'choice') {
     const selected = extractSelectedOptionIds(raw);
     if (selected.length === 0) return '—';
-    const optionMap = new Map((question.options || []).map((o) => [o.id, resolveLocalizedText(o.label, locale)]));
+    const optionMap = new Map(
+      (question.options || []).map((o) => [o.id, resolveLocalizedText(o.label, locale)])
+    );
     return selected.map((id) => optionMap.get(id) || id).join(', ');
+  }
+  if (question.type === 'bodymap') {
+    const selected = normalizeBodyAnswer(raw);
+    if (selected.length === 0) return '—';
+    if (selected.includes(BODY_NONE_VALUE)) {
+      return translateZone ? translateZone('body.allClear') : 'All clear';
+    }
+    return selected
+      .filter(isBodyZoneId)
+      .map((zoneId) => (translateZone ? translateZone(`body.${zoneId}`) : zoneId))
+      .join(', ');
   }
   return String(raw);
 }
@@ -97,6 +126,13 @@ export function computeQuestionStats(
       type: 'text',
       answeredCount: entries.length,
       entries,
+    };
+  }
+
+  if (question.type === 'bodymap') {
+    return {
+      type: 'bodymap',
+      ...computeBodyMapHeatmap(question.id, responses),
     };
   }
 
@@ -204,7 +240,8 @@ export function escapeCsvCell(value: unknown): string {
 export function exportSurveyResultsToCsv(
   survey: Survey,
   responses: SurveyResponse[],
-  locale: Locale
+  locale: Locale,
+  translateZone?: (key: string) => string
 ): string {
   const headers = [
     'Submitted At',
@@ -220,7 +257,9 @@ export function exportSurveyResultsToCsv(
     ...survey.questions.map((q) => {
       const raw = r.answers[q.id];
       if (raw === undefined || raw === null) return '';
-      if (q.type === 'choice') return formatAnswerForDisplay(q, raw, locale);
+      if (q.type === 'choice' || q.type === 'bodymap') {
+        return formatAnswerForDisplay(q, raw, locale, translateZone);
+      }
       return raw;
     }),
   ]);

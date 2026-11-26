@@ -3,11 +3,13 @@ import {
   calculateAverage,
   computeQuestionStats,
   exportSurveyResultsToCsv,
+  formatAnswerForDisplay,
 } from './analytics.ts';
+import { BODY_NONE_VALUE } from './bodymap.ts';
 import type { Question, Survey, SurveyResponse } from '../types/survey.ts';
 
-describe('analytics & deletion recalculation', () => {
-  it('recalculates averages and voter lists cleanly after deleting an individual response', () => {
+describe('analytics, bodymap stats & deletion recalculation', () => {
+  it('recalculates independent numeric averages and voter lists cleanly after deleting an individual response', () => {
     const qRating: Question = { id: 'q1', type: 'rating10', required: true, text: { et: 'Raskus' } };
     const qChoice: Question = {
       id: 'q2',
@@ -44,7 +46,6 @@ describe('analytics & deletion recalculation', () => {
       expect(beforeDelete.answeredCount).toBe(2);
     }
 
-    // Simulate coach deleting r2Duplicate
     const remaining = [r1, r2Duplicate].filter((r) => r.id !== 'r2');
     const afterDelete = computeQuestionStats(qRating, remaining);
     if (afterDelete.type === 'rating10') {
@@ -63,8 +64,21 @@ describe('analytics & deletion recalculation', () => {
     }
   });
 
-  it('exports choice labels cleanly in CSV', () => {
+  it('computes bodymap heatmap stats and exports localized bodymap + choice labels to CSV', () => {
     expect(calculateAverage([])).toBeNull();
+
+    const qBody: Question = { id: 'q_body', type: 'bodymap', required: true, text: { et: 'Valu?' } };
+    const qChoice: Question = {
+      id: 'q_choice',
+      type: 'choice',
+      required: true,
+      options: [
+        { id: 'yes', label: { et: 'Jah', es: 'Sí' } },
+        { id: 'no', label: { et: 'Ei', es: 'No' } },
+      ],
+      text: { et: 'Kas tuled?' },
+    };
+
     const survey: Survey = {
       id: 's1',
       title: 'Trenn',
@@ -73,27 +87,32 @@ describe('analytics & deletion recalculation', () => {
       status: 'active',
       isTemplate: false,
       allowMultipleFromSameDevice: false,
-      questions: [
-        {
-          id: 'q1',
-          type: 'choice',
-          required: true,
-          options: [
-            { id: 'yes', label: { et: 'Jah', es: 'Sí' } },
-            { id: 'no', label: { et: 'Ei', es: 'No' } },
-          ],
-          text: { et: 'Kas tuled?' },
-        },
-      ],
-      responseCount: 1,
+      questions: [qChoice, qBody],
+      responseCount: 2,
       createdAt: 1000,
       updatedAt: 1000,
     };
-    const csv = exportSurveyResultsToCsv(
-      survey,
-      [{ id: 'r1', surveyId: 's1', respondentName: 'Oskar', locale: 'et', answers: { q1: 'yes' }, submittedAt: 1000 }],
-      'es'
-    );
+
+    const responses: SurveyResponse[] = [
+      { id: 'r1', surveyId: 's1', respondentName: 'Oskar', locale: 'es', answers: { q_choice: 'yes', q_body: ['knee_r'] }, submittedAt: 1000 },
+      { id: 'r2', surveyId: 's1', respondentName: 'Hugo', locale: 'es', answers: { q_choice: 'no', q_body: [BODY_NONE_VALUE] }, submittedAt: 2000 },
+    ];
+
+    const bodyStats = computeQuestionStats(qBody, responses, 'es');
+    expect(bodyStats.type).toBe('bodymap');
+    if (bodyStats.type === 'bodymap') {
+      expect(bodyStats.answeredCount).toBe(2);
+      expect(bodyStats.allClearCount).toBe(1);
+      expect(bodyStats.reportedZones[0].zoneId).toBe('knee_r');
+    }
+
+    const fakeT = (k: string) => (k === 'body.knee_r' ? 'Rodilla derecha' : k === 'body.allClear' ? 'Todo bien' : k);
+    expect(formatAnswerForDisplay(qBody, ['knee_r'], 'es', fakeT)).toBe('Rodilla derecha');
+    expect(formatAnswerForDisplay(qBody, [BODY_NONE_VALUE], 'es', fakeT)).toBe('Todo bien');
+
+    const csv = exportSurveyResultsToCsv(survey, responses, 'es', fakeT);
     expect(csv).toContain('Sí');
+    expect(csv).toContain('Rodilla derecha');
+    expect(csv).toContain('Todo bien');
   });
 });

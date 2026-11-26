@@ -84,8 +84,8 @@ export function CoachDashboardView() {
 
   return (
     <section>
-      <header className="page-header">
-        <h1 className="page-title">{t('dashboard.title')}</h1>
+      <div className="row-between" style={{ marginBottom: 16 }}>
+        <div />
         <div className="header-actions">
           <button
             type="button"
@@ -95,7 +95,7 @@ export function CoachDashboardView() {
             + {t('dashboard.newSurvey')}
           </button>
         </div>
-      </header>
+      </div>
 
       {!isFirebaseConfigured && (
         <div className="notice-banner">{t('dashboard.localModeBanner')}</div>

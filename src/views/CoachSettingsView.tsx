@@ -35,10 +35,6 @@ export function CoachSettingsView() {
 
   return (
     <section style={{ maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <header className="page-header" style={{ marginBottom: 0 }}>
-        <h1 className="page-title">{t('settings.title')}</h1>
-      </header>
-
       <div className="surface-section">
         <div style={{ padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <span className="field-label">{t('settings.languageLabel')}</span>
