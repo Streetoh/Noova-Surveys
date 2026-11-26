@@ -482,6 +482,21 @@ export function PlayerSurveyRunner({
 
           {currentQuestion.type === 'rating10' && (
             <div className="rating10-stage">
+              <div className="rating10-hero">
+                <span
+                  className="rating10-hero-val"
+                  style={{
+                    color:
+                      typeof currentValue === 'number'
+                        ? RATING10_COLORS[currentValue]
+                        : 'var(--text-muted)',
+                  }}
+                >
+                  {typeof currentValue === 'number' ? currentValue : '—'}
+                </span>
+                <span className="rating10-hero-max">/ 10</span>
+              </div>
+
               <div className="rating10-grid" role="group">
                 {Array.from({ length: 10 }, (_, i) => i + 1).map((num) => {
                   const selected = currentValue === num;
@@ -497,17 +512,16 @@ export function PlayerSurveyRunner({
                               backgroundColor: tone,
                               borderColor: tone,
                               color: '#08090b',
+                              boxShadow: `0 6px 20px ${tone}44`,
                             }
-                          : undefined
+                          : {
+                              borderColor: `${tone}44`,
+                            }
                       }
                       onClick={() => setAnswer(currentQuestion.id, num)}
                       aria-pressed={selected}
                     >
                       <span className="rating10-num">{num}</span>
-                      <span
-                        className="rating10-bar"
-                        style={{ backgroundColor: selected ? '#08090b' : tone }}
-                      />
                     </button>
                   );
                 })}

@@ -4,6 +4,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   increment,
   onSnapshot,
   orderBy,
@@ -19,11 +20,6 @@ import { COLLECTIONS, getDb, isFirebaseConfigured } from './firebase.ts';
 const LOCAL_SURVEYS_KEY = 'pps_local_surveys_v1';
 const LOCAL_RESPONSES_KEY = 'pps_local_responses_v1';
 const LOCAL_TEAMS_KEY = 'pps_local_teams_v1';
-const localListeners = new Set<() => void>();
-
-function notifyLocal() {
-  for (const fn of localListeners) fn();
-}
 
 function readLocal<T>(key: string): T[] {
   try {
@@ -38,47 +34,24 @@ function writeLocal<T>(key: string, items: T[]): void {
   try {
     window.localStorage.setItem(key, JSON.stringify(items));
   } catch {
-    // Ignore
+    // Ignore quota errors
   }
-  notifyLocal();
 }
 
-/* --- Surveys --- */
+/* --- Surveys (One-shot reads, zero listeners) --- */
 
-export function subscribeSurveys(
-  onData: (surveys: Survey[]) => void,
-  onError?: (err: Error) => void
-): () => void {
+export async function getSurveysOnce(): Promise<Survey[]> {
   const db = getDb();
   if (!db || !isFirebaseConfigured) {
-    const emit = () => {
-      const list = readLocal<Survey>(LOCAL_SURVEYS_KEY).sort((a, b) => b.updatedAt - a.updatedAt);
-      onData(list);
-    };
-    emit();
-    localListeners.add(emit);
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === LOCAL_SURVEYS_KEY) emit();
-    };
-    window.addEventListener('storage', onStorage);
-    return () => {
-      localListeners.delete(emit);
-      window.removeEventListener('storage', onStorage);
-    };
+    return readLocal<Survey>(LOCAL_SURVEYS_KEY).sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
   const q = query(collection(db, COLLECTIONS.SURVEYS), orderBy('updatedAt', 'desc'));
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const list: Survey[] = snapshot.docs.map((d) => ({
-        ...(d.data() as Omit<Survey, 'id'>),
-        id: d.id,
-      }));
-      onData(list);
-    },
-    (err) => onError?.(err)
-  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((d) => ({
+    ...(d.data() as Omit<Survey, 'id'>),
+    id: d.id,
+  }));
 }
 
 export async function getSurveyById(surveyId: string): Promise<Survey | null> {
@@ -90,37 +63,6 @@ export async function getSurveyById(surveyId: string): Promise<Survey | null> {
   const snap = await getDoc(doc(db, COLLECTIONS.SURVEYS, surveyId));
   if (!snap.exists()) return null;
   return { ...(snap.data() as Omit<Survey, 'id'>), id: snap.id };
-}
-
-export function subscribeSurveyById(
-  surveyId: string,
-  onData: (survey: Survey | null) => void,
-  onError?: (err: Error) => void
-): () => void {
-  const db = getDb();
-  if (!db || !isFirebaseConfigured) {
-    const emit = () => {
-      const found = readLocal<Survey>(LOCAL_SURVEYS_KEY).find((s) => s.id === surveyId) ?? null;
-      onData(found);
-    };
-    emit();
-    localListeners.add(emit);
-    return () => {
-      localListeners.delete(emit);
-    };
-  }
-
-  return onSnapshot(
-    doc(db, COLLECTIONS.SURVEYS, surveyId),
-    (snap) => {
-      if (!snap.exists()) {
-        onData(null);
-        return;
-      }
-      onData({ ...(snap.data() as Omit<Survey, 'id'>), id: snap.id });
-    },
-    (err) => onError?.(err)
-  );
 }
 
 export async function createSurvey(data: Omit<Survey, 'id'>): Promise<string> {
@@ -173,9 +115,27 @@ export async function deleteSurveyById(surveyId: string): Promise<void> {
   await deleteDoc(doc(db, COLLECTIONS.SURVEYS, surveyId));
 }
 
-/* --- Survey Responses --- */
+/* --- Survey Responses (Live onSnapshot ONLY for active surveys; getDocs for closed) --- */
 
-export function subscribeSurveyResponses(
+export async function getSurveyResponsesOnce(surveyId: string): Promise<SurveyResponse[]> {
+  const db = getDb();
+  if (!db || !isFirebaseConfigured) {
+    return readLocal<SurveyResponse>(LOCAL_RESPONSES_KEY)
+      .filter((r) => r.surveyId === surveyId)
+      .sort((a, b) => b.submittedAt - a.submittedAt);
+  }
+
+  const q = query(collection(db, COLLECTIONS.RESPONSES), where('surveyId', '==', surveyId));
+  const snapshot = await getDocs(q);
+  return snapshot.docs
+    .map((d) => ({
+      ...(d.data() as Omit<SurveyResponse, 'id'>),
+      id: d.id,
+    }))
+    .sort((a, b) => b.submittedAt - a.submittedAt);
+}
+
+export function subscribeActiveSurveyResponses(
   surveyId: string,
   onData: (responses: SurveyResponse[]) => void,
   onError?: (err: Error) => void
@@ -189,21 +149,16 @@ export function subscribeSurveyResponses(
       onData(list);
     };
     emit();
-    localListeners.add(emit);
     const onStorage = (e: StorageEvent) => {
       if (e.key === LOCAL_RESPONSES_KEY) emit();
     };
     window.addEventListener('storage', onStorage);
     return () => {
-      localListeners.delete(emit);
       window.removeEventListener('storage', onStorage);
     };
   }
 
-  const q = query(
-    collection(db, COLLECTIONS.RESPONSES),
-    where('surveyId', '==', surveyId)
-  );
+  const q = query(collection(db, COLLECTIONS.RESPONSES), where('surveyId', '==', surveyId));
   return onSnapshot(
     q,
     (snapshot) => {
@@ -273,42 +228,20 @@ export async function deleteSurveyResponseById(
   });
 }
 
-/* --- Teams / Rosters (`survey_teams`) --- */
+/* --- Teams / Rosters (`survey_teams`, one-shot reads) --- */
 
-export function subscribeTeams(
-  onData: (teams: Team[]) => void,
-  onError?: (err: Error) => void
-): () => void {
+export async function getTeamsOnce(): Promise<Team[]> {
   const db = getDb();
   if (!db || !isFirebaseConfigured) {
-    const emit = () => {
-      const list = readLocal<Team>(LOCAL_TEAMS_KEY).sort((a, b) => a.name.localeCompare(b.name));
-      onData(list);
-    };
-    emit();
-    localListeners.add(emit);
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === LOCAL_TEAMS_KEY) emit();
-    };
-    window.addEventListener('storage', onStorage);
-    return () => {
-      localListeners.delete(emit);
-      window.removeEventListener('storage', onStorage);
-    };
+    return readLocal<Team>(LOCAL_TEAMS_KEY).sort((a, b) => a.name.localeCompare(b.name));
   }
 
   const q = query(collection(db, COLLECTIONS.TEAMS), orderBy('name', 'asc'));
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const list: Team[] = snapshot.docs.map((d) => ({
-        ...(d.data() as Omit<Team, 'id'>),
-        id: d.id,
-      }));
-      onData(list);
-    },
-    (err) => onError?.(err)
-  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((d) => ({
+    ...(d.data() as Omit<Team, 'id'>),
+    id: d.id,
+  }));
 }
 
 export async function createTeam(data: Omit<Team, 'id'>): Promise<string> {

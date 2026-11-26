@@ -5,7 +5,7 @@ import { parseAndMergePlayers, sortPlayersAlphabetically } from '../lib/roster.t
 import {
   createTeam,
   deleteTeamById,
-  subscribeTeams,
+  getTeamsOnce,
   updateTeam,
 } from '../services/surveysRepo.ts';
 import { useAppStore } from '../store/useAppStore.ts';
@@ -29,15 +29,20 @@ export function CoachTeamsView() {
   const [deletingTeam, setDeletingTeam] = useState<Team | null>(null);
 
   useEffect(() => {
-    const unsub = subscribeTeams(
-      (list) => {
+    let mounted = true;
+    getTeamsOnce()
+      .then((list) => {
+        if (!mounted) return;
         setTeams(list);
         setLoading(false);
         setActiveTeamId((prev) => (prev && list.some((x) => x.id === prev) ? prev : list[0]?.id || null));
-      },
-      () => setLoading(false)
-    );
-    return () => unsub();
+      })
+      .catch(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const activeTeam = teams.find((item) => item.id === activeTeamId) || teams[0] || null;
@@ -50,12 +55,14 @@ export function CoachTeamsView() {
       return;
     }
     const now = Date.now();
-    const id = await createTeam({
+    const payload = {
       name: trimmed,
       players: [],
       createdAt: now,
       updatedAt: now,
-    });
+    };
+    const id = await createTeam(payload);
+    setTeams((prev) => [...prev, { ...payload, id }].sort((a, b) => a.name.localeCompare(b.name)));
     setNewTeamName('');
     setNameError(null);
     setActiveTeamId(id);
@@ -64,20 +71,25 @@ export function CoachTeamsView() {
 
   async function handleRenameTeam(nextName: string) {
     if (!activeTeam) return;
-    await updateTeam(activeTeam.id, { name: nextName });
+    const teamId = activeTeam.id;
+    setTeams((prev) => prev.map((tm) => (tm.id === teamId ? { ...tm, name: nextName } : tm)));
+    await updateTeam(teamId, { name: nextName });
   }
 
   async function handleAddPlayers(e: FormEvent) {
     e.preventDefault();
     if (!activeTeam || !bulkInput.trim()) return;
+    const teamId = activeTeam.id;
     const merged = parseAndMergePlayers(activeTeam.players, bulkInput, locale);
-    await updateTeam(activeTeam.id, { players: merged });
+    setTeams((prev) => prev.map((tm) => (tm.id === teamId ? { ...tm, players: merged } : tm)));
+    await updateTeam(teamId, { players: merged });
     setBulkInput('');
     showToast(t('teams.savedToast'));
   }
 
   async function handleSaveEditedPlayer(idx: number) {
     if (!activeTeam) return;
+    const teamId = activeTeam.id;
     const trimmed = editingValue.trim();
     const nextList = [...activeTeam.players];
     if (!trimmed) {
@@ -86,20 +98,29 @@ export function CoachTeamsView() {
       nextList[idx] = trimmed;
     }
     const sorted = sortPlayersAlphabetically(nextList, locale);
-    await updateTeam(activeTeam.id, { players: sorted });
+    setTeams((prev) => prev.map((tm) => (tm.id === teamId ? { ...tm, players: sorted } : tm)));
+    await updateTeam(teamId, { players: sorted });
     setEditingIndex(null);
     setEditingValue('');
   }
 
   async function handleRemovePlayer(idx: number) {
     if (!activeTeam) return;
+    const teamId = activeTeam.id;
     const nextList = activeTeam.players.filter((_, i) => i !== idx);
-    await updateTeam(activeTeam.id, { players: nextList });
+    setTeams((prev) => prev.map((tm) => (tm.id === teamId ? { ...tm, players: nextList } : tm)));
+    await updateTeam(teamId, { players: nextList });
   }
 
   async function handleConfirmDeleteTeam() {
     if (!deletingTeam) return;
-    await deleteTeamById(deletingTeam.id);
+    const deletedId = deletingTeam.id;
+    await deleteTeamById(deletedId);
+    setTeams((prev) => {
+      const remaining = prev.filter((tm) => tm.id !== deletedId);
+      setActiveTeamId(remaining[0]?.id || null);
+      return remaining;
+    });
     setDeletingTeam(null);
     showToast(t('teams.deletedToast'));
   }

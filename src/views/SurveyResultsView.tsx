@@ -13,13 +13,13 @@ import { computeRosterParticipation } from '../lib/roster.ts';
 import { isSurveyEffectivelyClosed, isSurveyExpired, resolveLocalizedText } from '../lib/validation.ts';
 import {
   deleteSurveyResponseById,
-  subscribeSurveyById,
-  subscribeSurveyResponses,
-  subscribeTeams,
+  getSurveyById,
+  getSurveyResponsesOnce,
+  subscribeActiveSurveyResponses,
   updateSurvey,
 } from '../services/surveysRepo.ts';
 import { useAppStore } from '../store/useAppStore.ts';
-import type { Survey, SurveyResponse, Team } from '../types/survey.ts';
+import type { Survey, SurveyResponse } from '../types/survey.ts';
 
 const EMOJI_FACES: Record<number, string> = {
   1: '😣',
@@ -57,7 +57,6 @@ export function SurveyResultsView() {
 
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [responses, setResponses] = useState<SurveyResponse[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'questions' | 'individual'>('questions');
   const [selectedResponseId, setSelectedResponseId] = useState<string | null>(null);
@@ -65,33 +64,55 @@ export function SurveyResultsView() {
   const [showShare, setShowShare] = useState(false);
   const [togglingStatus, setTogglingStatus] = useState(false);
 
+  // 1. One-shot read of the survey document (no onSnapshot on surveys or survey_teams)
   useEffect(() => {
-    if (!id) return;
-    const unsubSurvey = subscribeSurveyById(id, (s) => {
-      setSurvey(s);
+    if (!id) {
       setLoading(false);
-    });
-    const unsubResponses = subscribeSurveyResponses(id, (list) => {
-      setResponses(list);
-    });
-    const unsubTeams = subscribeTeams((list) => {
-      setTeams(list);
-    });
+      return;
+    }
+    let mounted = true;
+    setLoading(true);
+    getSurveyById(id)
+      .then((found) => {
+        if (!mounted) return;
+        setSurvey(found);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (mounted) setLoading(false);
+      });
     return () => {
-      unsubSurvey();
-      unsubResponses();
-      unsubTeams();
+      mounted = false;
     };
   }, [id]);
 
+  // 2. Scoped real-time listener ONLY when survey is active and not expired;
+  //    otherwise one-shot getDocs read with zero active listeners.
+  const isClosed = survey ? isSurveyEffectivelyClosed(survey) : true;
+  useEffect(() => {
+    if (!id || !survey) return;
+    if (isClosed) {
+      let mounted = true;
+      getSurveyResponsesOnce(id).then((list) => {
+        if (mounted) setResponses(list);
+      });
+      return () => {
+        mounted = false;
+      };
+    }
+
+    const unsubscribe = subscribeActiveSurveyResponses(id, (list) => {
+      setResponses(list);
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [id, survey?.id, isClosed]);
+
   const effectiveRoster = useMemo(() => {
     if (!survey) return [];
-    if (survey.teamId) {
-      const liveTeam = teams.find((tm) => tm.id === survey.teamId);
-      if (liveTeam && liveTeam.players.length > 0) return liveTeam.players;
-    }
     return Array.isArray(survey.teamRosterSnapshot) ? survey.teamRosterSnapshot : [];
-  }, [survey, teams]);
+  }, [survey]);
 
   const participation = useMemo(
     () =>
@@ -107,14 +128,16 @@ export function SurveyResultsView() {
     try {
       const currentlyClosed = isSurveyEffectivelyClosed(survey);
       if (currentlyClosed) {
-        // Reopen and clear any past deadline
+        const nextClosesAt = isSurveyExpired(survey) ? null : survey.closesAt;
         await updateSurvey(survey.id, {
           status: 'active',
-          closesAt: isSurveyExpired(survey) ? null : survey.closesAt,
+          closesAt: nextClosesAt,
         });
+        setSurvey((prev) => (prev ? { ...prev, status: 'active', closesAt: nextClosesAt } : prev));
         showToast(t('results.reopenedToast'));
       } else {
         await updateSurvey(survey.id, { status: 'closed' });
+        setSurvey((prev) => (prev ? { ...prev, status: 'closed' } : prev));
         showToast(t('results.closedToast'));
       }
     } finally {
@@ -124,8 +147,13 @@ export function SurveyResultsView() {
 
   async function handleConfirmDeleteResponse() {
     if (!deletingResponse || !survey) return;
-    await deleteSurveyResponseById(deletingResponse.id, survey.id);
-    if (selectedResponseId === deletingResponse.id) {
+    const deletedId = deletingResponse.id;
+    await deleteSurveyResponseById(deletedId, survey.id);
+    setResponses((prev) => prev.filter((r) => r.id !== deletedId));
+    setSurvey((prev) =>
+      prev ? { ...prev, responseCount: Math.max(0, (prev.responseCount || 0) - 1) } : prev
+    );
+    if (selectedResponseId === deletedId) {
       setSelectedResponseId(null);
     }
     setDeletingResponse(null);

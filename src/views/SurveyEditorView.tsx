@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ShareSurveyModal } from '../components/ShareSurveyModal.tsx';
 import { createTranslator, type TranslationKey } from '../i18n/index.ts';
@@ -13,7 +13,7 @@ import { validateSurveyDraft } from '../lib/validation.ts';
 import {
   createSurvey,
   getSurveyById,
-  subscribeTeams,
+  getTeamsOnce,
   updateSurvey,
 } from '../services/surveysRepo.ts';
 import { useAppStore } from '../store/useAppStore.ts';
@@ -61,14 +61,24 @@ export function SurveyEditorView() {
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [sharedSurvey, setSharedSurvey] = useState<Survey | null>(null);
   const [previewSurvey, setPreviewSurvey] = useState<Survey | null>(null);
+  const skipFetchIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const unsub = subscribeTeams((list) => setTeams(list));
-    return () => unsub();
+    let mounted = true;
+    getTeamsOnce().then((list) => {
+      if (mounted) setTeams(list);
+    });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
     if (isNew) return;
+    if (skipFetchIdRef.current === id) {
+      skipFetchIdRef.current = null;
+      return;
+    }
     let mounted = true;
     getSurveyById(id).then((found) => {
       if (!mounted) return;
@@ -124,6 +134,26 @@ export function SurveyEditorView() {
       updated.options = q.options && q.options.length >= 2 ? q.options : createYesNoOptions();
     }
     setQuestions((prev) => prev.map((item) => (item.id === q.id ? updated : item)));
+  }
+
+  function updateChoiceOptionMain(q: Question, optId: string, val: string) {
+    const translationsOpen = Boolean(openTranslations[q.id]);
+    const nextOpts: ChoiceOption[] = (q.options || []).map((opt) => {
+      if (opt.id !== optId) return opt;
+      if (translationsOpen) {
+        return { ...opt, label: { ...opt.label, et: val } };
+      }
+      // When editing in single-language mode, update both active locale and base `et`,
+      // clearing stale preset translations so players always see the edited text.
+      return {
+        ...opt,
+        label: {
+          et: val,
+          [locale]: val,
+        },
+      };
+    });
+    updateQuestion(q.id, { options: nextOpts });
   }
 
   function updateChoiceOption(
@@ -254,6 +284,7 @@ export function SurveyEditorView() {
       let savedId = id || '';
       if (isNew) {
         savedId = await createSurvey(payload);
+        skipFetchIdRef.current = savedId;
         navigate(`/coach/edit/${savedId}`, { replace: true });
       } else {
         const { responseCount: _rc, createdAt: _ca, ...patch } = payload;
@@ -519,13 +550,24 @@ export function SurveyEditorView() {
                 {q.type === 'choice' && (
                   <div className="choice-editor-box">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-compact"
-                        onClick={() => updateQuestion(q.id, { options: createYesNoOptions() })}
-                      >
-                        {t('editor.choicePresetYesNo')}
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-compact"
+                          onClick={() => updateQuestion(q.id, { options: createYesNoOptions() })}
+                        >
+                          {t('editor.choicePresetYesNo')}
+                        </button>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>
+                          <input
+                            type="checkbox"
+                            className="toggle-input"
+                            checked={Boolean(q.multiSelect)}
+                            onChange={(e) => updateQuestion(q.id, { multiSelect: e.target.checked })}
+                          />
+                          <span>{t('editor.choiceMultiSelect')}</span>
+                        </label>
+                      </div>
                       <button
                         type="button"
                         className="btn btn-ghost btn-compact"
@@ -536,27 +578,32 @@ export function SurveyEditorView() {
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {(q.options || []).map((opt, optIdx) => (
-                        <div key={opt.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                          <input
-                            className="input"
-                            style={{ minHeight: 38 }}
-                            value={opt.label.et}
-                            onChange={(e) => updateChoiceOption(q, opt.id, 'et', e.target.value)}
-                            placeholder={t('editor.choiceOptionPlaceholder', { index: optIdx + 1 })}
-                          />
-                          {(q.options?.length || 0) > 2 && (
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-compact"
-                              style={{ color: 'var(--danger)' }}
-                              onClick={() => removeChoiceOption(q, opt.id)}
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
-                      ))}
+                      {(q.options || []).map((opt, optIdx) => {
+                        const displayVal = translationsOpen
+                          ? opt.label.et
+                          : (opt.label[locale] ?? opt.label.et ?? '');
+                        return (
+                          <div key={opt.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <input
+                              className="input"
+                              style={{ minHeight: 38 }}
+                              value={displayVal}
+                              onChange={(e) => updateChoiceOptionMain(q, opt.id, e.target.value)}
+                              placeholder={t('editor.choiceOptionPlaceholder', { index: optIdx + 1 })}
+                            />
+                            {(q.options?.length || 0) > 2 && (
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-compact"
+                                style={{ color: 'var(--danger)' }}
+                                onClick={() => removeChoiceOption(q, opt.id)}
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

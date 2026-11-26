@@ -6,7 +6,7 @@ import { createTranslator } from '../i18n/index.ts';
 import { STARTER_TEMPLATES, cloneSurveyAsNew } from '../lib/templates.ts';
 import { isSurveyExpired } from '../lib/validation.ts';
 import { isFirebaseConfigured } from '../services/firebase.ts';
-import { createSurvey, deleteSurveyById, subscribeSurveys } from '../services/surveysRepo.ts';
+import { createSurvey, deleteSurveyById, getSurveysOnce } from '../services/surveysRepo.ts';
 import { useAppStore } from '../store/useAppStore.ts';
 import type { Survey, SurveyStatus } from '../types/survey.ts';
 
@@ -23,14 +23,19 @@ export function CoachDashboardView() {
   const [deletingSurvey, setDeletingSurvey] = useState<Survey | null>(null);
 
   useEffect(() => {
-    const unsub = subscribeSurveys(
-      (list) => {
+    let mounted = true;
+    getSurveysOnce()
+      .then((list) => {
+        if (!mounted) return;
         setAllItems(list);
         setLoading(false);
-      },
-      () => setLoading(false)
-    );
-    return () => unsub();
+      })
+      .catch(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const surveys = useMemo(
@@ -51,18 +56,24 @@ export function CoachDashboardView() {
   }
 
   async function handleDuplicate(survey: Survey) {
-    await createSurvey(cloneSurveyAsNew(survey, { isTemplate: false, titleSuffix: '(2)' }));
+    const payload = cloneSurveyAsNew(survey, { isTemplate: false, titleSuffix: '(2)' });
+    const newId = await createSurvey(payload);
+    setAllItems((prev) => [{ ...payload, id: newId }, ...prev]);
     showToast(t('dashboard.duplicatedToast'));
   }
 
   async function handleSaveAsTemplate(survey: Survey) {
-    await createSurvey(cloneSurveyAsNew(survey, { isTemplate: true }));
+    const payload = cloneSurveyAsNew(survey, { isTemplate: true });
+    const newId = await createSurvey(payload);
+    setAllItems((prev) => [{ ...payload, id: newId }, ...prev]);
     showToast(t('dashboard.templateSavedToast'));
   }
 
   async function handleConfirmDelete() {
     if (!deletingSurvey) return;
-    await deleteSurveyById(deletingSurvey.id);
+    const deletedId = deletingSurvey.id;
+    await deleteSurveyById(deletedId);
+    setAllItems((prev) => prev.filter((s) => s.id !== deletedId));
     showToast(t('dashboard.deletedToast'));
     setDeletingSurvey(null);
   }

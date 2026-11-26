@@ -1,5 +1,11 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
-import { getFirestore, type Firestore } from 'firebase/firestore';
+import {
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  type Firestore,
+} from 'firebase/firestore';
 
 export const COLLECTIONS = {
   SURVEYS: 'surveys',
@@ -29,7 +35,15 @@ export function getDb(): Firestore | null {
   if (!isFirebaseConfigured) return null;
   if (!appInstance) {
     appInstance = initializeApp(firebaseConfig);
-    dbInstance = getFirestore(appInstance);
+    try {
+      dbInstance = initializeFirestore(appInstance, {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager(),
+        }),
+      });
+    } catch {
+      dbInstance = getFirestore(appInstance);
+    }
   }
   return dbInstance;
 }
