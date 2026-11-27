@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { changeQuestionType, createEmptyQuestion } from './templates.ts';
+import { changeQuestionType, createEmptyQuestion, STARTER_TEMPLATES } from './templates.ts';
 
 describe('changeQuestionType', () => {
   it('preserves id and custom text while initializing type-specific defaults', () => {
@@ -46,5 +46,35 @@ describe('changeQuestionType', () => {
     const asBodymap = changeQuestionType(emptyEmoji, 'bodymap');
     expect(asBodymap.text.es).toBeTruthy();
     expect(asBodymap.polarity).toBeUndefined();
+  });
+});
+
+describe('STARTER_TEMPLATES catalog', () => {
+  it('provides 4 complete football templates with 4-locale parity and required rules', () => {
+    expect(STARTER_TEMPLATES).toHaveLength(4);
+    const seenIds = new Set<string>();
+
+    for (const tpl of STARTER_TEMPLATES) {
+      expect(tpl.localizedTitle.et.trim().length).toBeGreaterThan(0);
+      expect(tpl.localizedTitle.en?.trim().length).toBeGreaterThan(0);
+      expect(tpl.localizedTitle.ru?.trim().length).toBeGreaterThan(0);
+      expect(tpl.localizedTitle.es?.trim().length).toBeGreaterThan(0);
+
+      for (const q of tpl.questions) {
+        expect(seenIds.has(q.id)).toBe(false);
+        seenIds.add(q.id);
+
+        expect(q.text.et.trim().length).toBeGreaterThan(0);
+        expect(q.text.en?.trim().length).toBeGreaterThan(0);
+        expect(q.text.ru?.trim().length).toBeGreaterThan(0);
+        expect(q.text.es?.trim().length).toBeGreaterThan(0);
+
+        if (q.type === 'bodymap' || q.type === 'text') {
+          expect(q.required).toBe(false);
+        } else if (q.type === 'emoji5' || q.type === 'rating10' || q.type === 'slider') {
+          expect(q.required).toBe(true);
+        }
+      }
+    }
   });
 });

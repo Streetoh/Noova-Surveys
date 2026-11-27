@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { ConfirmModal } from '../components/ConfirmModal.tsx';
 import { ShareSurveyModal } from '../components/ShareSurveyModal.tsx';
 import { createTranslator } from '../i18n/index.ts';
-import { STARTER_TEMPLATES, cloneSurveyAsNew } from '../lib/templates.ts';
-import { isSurveyExpired } from '../lib/validation.ts';
+import { STARTER_TEMPLATES, cloneSurveyAsNew, type StarterTemplate } from '../lib/templates.ts';
+import { isSurveyExpired, resolveLocalizedText } from '../lib/validation.ts';
 import { isFirebaseConfigured } from '../services/firebase.ts';
 import { createSurvey, deleteSurveyById, getSurveysOnce } from '../services/surveysRepo.ts';
 import { useAppStore } from '../store/useAppStore.ts';
@@ -49,9 +49,26 @@ export function CoachDashboardView() {
   const savedTemplates = useMemo(() => allItems.filter((s) => s.isTemplate), [allItems]);
 
   async function handleUseTemplate(
-    template: Omit<Survey, 'id' | 'createdAt' | 'updatedAt' | 'responseCount'>
+    template: Omit<Survey, 'id' | 'createdAt' | 'updatedAt' | 'responseCount'> | StarterTemplate
   ) {
-    const newId = await createSurvey(cloneSurveyAsNew(template, { isTemplate: false }));
+    const localizedTitle =
+      'localizedTitle' in template
+        ? resolveLocalizedText(template.localizedTitle, locale)
+        : template.title;
+    const localizedDescription =
+      'localizedDescription' in template
+        ? resolveLocalizedText(template.localizedDescription, locale)
+        : template.description;
+    const newId = await createSurvey(
+      cloneSurveyAsNew(
+        {
+          ...template,
+          title: localizedTitle,
+          description: localizedDescription,
+        },
+        { isTemplate: false }
+      )
+    );
     navigate(`/coach/edit/${newId}`);
   }
 
@@ -224,27 +241,31 @@ export function CoachDashboardView() {
             <span className="section-label">{t('dashboard.starterTemplates')}</span>
           </div>
           <div>
-            {STARTER_TEMPLATES.map((tpl, idx) => (
-              <div key={idx} className="hairline-row" style={{ background: 'transparent' }}>
-                <div className="row-top">
-                  <strong style={{ fontSize: 13.5 }}>{tpl.title}</strong>
-                  {tpl.teamTag && <span className="badge">{tpl.teamTag}</span>}
+            {STARTER_TEMPLATES.map((tpl, idx) => {
+              const tplTitle = resolveLocalizedText(tpl.localizedTitle, locale);
+              const tplDesc = resolveLocalizedText(tpl.localizedDescription, locale);
+              return (
+                <div key={idx} className="hairline-row" style={{ background: 'transparent' }}>
+                  <div className="row-top">
+                    <strong style={{ fontSize: 13.5 }}>{tplTitle}</strong>
+                    {tpl.teamTag && <span className="badge">{tpl.teamTag}</span>}
+                  </div>
+                  <div className="row-meta">
+                    <span>{t('dashboard.questionsCount', { count: tpl.questions.length })}</span>
+                    {tplDesc && <span>· {tplDesc}</span>}
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-compact"
+                      onClick={() => handleUseTemplate(tpl)}
+                    >
+                      {t('dashboard.useTemplate')}
+                    </button>
+                  </div>
                 </div>
-                <div className="row-meta">
-                  <span>{t('dashboard.questionsCount', { count: tpl.questions.length })}</span>
-                  {tpl.description && <span>· {tpl.description}</span>}
-                </div>
-                <div>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-compact"
-                    onClick={() => handleUseTemplate(tpl)}
-                  >
-                    {t('dashboard.useTemplate')}
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {savedTemplates.length > 0 && (
