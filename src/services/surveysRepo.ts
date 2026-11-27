@@ -6,6 +6,7 @@ import {
   getDoc,
   getDocs,
   increment,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -40,13 +41,15 @@ function writeLocal<T>(key: string, items: T[]): void {
 
 /* --- Surveys (One-shot reads, zero listeners) --- */
 
-export async function getSurveysOnce(): Promise<Survey[]> {
+export async function getSurveysOnce(maxItems = 100): Promise<Survey[]> {
   const db = getDb();
   if (!db || !isFirebaseConfigured) {
-    return readLocal<Survey>(LOCAL_SURVEYS_KEY).sort((a, b) => b.updatedAt - a.updatedAt);
+    return readLocal<Survey>(LOCAL_SURVEYS_KEY)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, maxItems);
   }
 
-  const q = query(collection(db, COLLECTIONS.SURVEYS), orderBy('updatedAt', 'desc'));
+  const q = query(collection(db, COLLECTIONS.SURVEYS), orderBy('updatedAt', 'desc'), limit(maxItems));
   const snapshot = await getDocs(q);
   return snapshot.docs.map((d) => ({
     ...(d.data() as Omit<Survey, 'id'>),
@@ -117,15 +120,23 @@ export async function deleteSurveyById(surveyId: string): Promise<void> {
 
 /* --- Survey Responses (Live onSnapshot ONLY for active surveys; getDocs for closed) --- */
 
-export async function getSurveyResponsesOnce(surveyId: string): Promise<SurveyResponse[]> {
+export async function getSurveyResponsesOnce(
+  surveyId: string,
+  maxItems = 500
+): Promise<SurveyResponse[]> {
   const db = getDb();
   if (!db || !isFirebaseConfigured) {
     return readLocal<SurveyResponse>(LOCAL_RESPONSES_KEY)
       .filter((r) => r.surveyId === surveyId)
-      .sort((a, b) => b.submittedAt - a.submittedAt);
+      .sort((a, b) => b.submittedAt - a.submittedAt)
+      .slice(0, maxItems);
   }
 
-  const q = query(collection(db, COLLECTIONS.RESPONSES), where('surveyId', '==', surveyId));
+  const q = query(
+    collection(db, COLLECTIONS.RESPONSES),
+    where('surveyId', '==', surveyId),
+    limit(maxItems)
+  );
   const snapshot = await getDocs(q);
   return snapshot.docs
     .map((d) => ({
@@ -138,14 +149,16 @@ export async function getSurveyResponsesOnce(surveyId: string): Promise<SurveyRe
 export function subscribeActiveSurveyResponses(
   surveyId: string,
   onData: (responses: SurveyResponse[]) => void,
-  onError?: (err: Error) => void
+  onError?: (err: Error) => void,
+  maxItems = 500
 ): () => void {
   const db = getDb();
   if (!db || !isFirebaseConfigured) {
     const emit = () => {
       const list = readLocal<SurveyResponse>(LOCAL_RESPONSES_KEY)
         .filter((r) => r.surveyId === surveyId)
-        .sort((a, b) => b.submittedAt - a.submittedAt);
+        .sort((a, b) => b.submittedAt - a.submittedAt)
+        .slice(0, maxItems);
       onData(list);
     };
     emit();
@@ -158,7 +171,11 @@ export function subscribeActiveSurveyResponses(
     };
   }
 
-  const q = query(collection(db, COLLECTIONS.RESPONSES), where('surveyId', '==', surveyId));
+  const q = query(
+    collection(db, COLLECTIONS.RESPONSES),
+    where('surveyId', '==', surveyId),
+    limit(maxItems)
+  );
   return onSnapshot(
     q,
     (snapshot) => {
@@ -193,12 +210,14 @@ export async function submitSurveyResponse(
     return id;
   }
 
-  const ref = await addDoc(collection(db, COLLECTIONS.RESPONSES), cleanResponse);
-  await updateDoc(doc(db, COLLECTIONS.SURVEYS, cleanResponse.surveyId), {
-    responseCount: increment(1),
-  }).catch(() => {
-    // Non-fatal if rules restrict player updates to survey counter
-  });
+  const [ref] = await Promise.all([
+    addDoc(collection(db, COLLECTIONS.RESPONSES), cleanResponse),
+    updateDoc(doc(db, COLLECTIONS.SURVEYS, cleanResponse.surveyId), {
+      responseCount: increment(1),
+    }).catch(() => {
+      // Non-fatal if rules restrict player updates to survey counter
+    }),
+  ]);
   return ref.id;
 }
 
@@ -220,23 +239,27 @@ export async function deleteSurveyResponseById(
     return;
   }
 
-  await deleteDoc(doc(db, COLLECTIONS.RESPONSES, responseId));
-  await updateDoc(doc(db, COLLECTIONS.SURVEYS, surveyId), {
-    responseCount: increment(-1),
-  }).catch(() => {
-    // Non-fatal
-  });
+  await Promise.all([
+    deleteDoc(doc(db, COLLECTIONS.RESPONSES, responseId)),
+    updateDoc(doc(db, COLLECTIONS.SURVEYS, surveyId), {
+      responseCount: increment(-1),
+    }).catch(() => {
+      // Non-fatal
+    }),
+  ]);
 }
 
 /* --- Teams / Rosters (`survey_teams`, one-shot reads) --- */
 
-export async function getTeamsOnce(): Promise<Team[]> {
+export async function getTeamsOnce(maxItems = 50): Promise<Team[]> {
   const db = getDb();
   if (!db || !isFirebaseConfigured) {
-    return readLocal<Team>(LOCAL_TEAMS_KEY).sort((a, b) => a.name.localeCompare(b.name));
+    return readLocal<Team>(LOCAL_TEAMS_KEY)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, maxItems);
   }
 
-  const q = query(collection(db, COLLECTIONS.TEAMS), orderBy('name', 'asc'));
+  const q = query(collection(db, COLLECTIONS.TEAMS), orderBy('name', 'asc'), limit(maxItems));
   const snapshot = await getDocs(q);
   return snapshot.docs.map((d) => ({
     ...(d.data() as Omit<Team, 'id'>),

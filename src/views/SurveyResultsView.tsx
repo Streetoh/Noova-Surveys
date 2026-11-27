@@ -132,6 +132,14 @@ export function SurveyResultsView() {
     [effectiveRoster, responses, locale]
   );
 
+  const statsByQuestionId = useMemo(
+    () =>
+      new Map(
+        (survey?.questions || []).map((q) => [q.id, computeQuestionStats(q, responses, locale)])
+      ),
+    [survey?.questions, responses, locale]
+  );
+
   async function handleToggleStatus() {
     if (!survey || togglingStatus) return;
     setTogglingStatus(true);
@@ -340,8 +348,10 @@ export function SurveyResultsView() {
         <div className="bento-kpis-grid">
           {numericQuestions.length > 0 ? (
             numericQuestions.map((q, kpiIdx) => {
-              const st = computeQuestionStats(q, responses, locale);
-              if (st.type !== 'rating10' && st.type !== 'slider' && st.type !== 'emoji5') return null;
+              const st = statsByQuestionId.get(q.id);
+              if (!st || (st.type !== 'rating10' && st.type !== 'slider' && st.type !== 'emoji5')) {
+                return null;
+              }
               const ratio =
                 st.average !== null ? getNormalizedRatio(st.average, st.min, st.max) : 0.5;
               const color =
@@ -465,7 +475,7 @@ export function SurveyResultsView() {
       ) : tab === 'questions' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {survey.questions.map((q, idx) => {
-            const stats = computeQuestionStats(q, responses, locale);
+            const stats = statsByQuestionId.get(q.id) || computeQuestionStats(q, responses, locale);
             const qTitle = resolveLocalizedText(q.text, locale) || t('editor.questionNumber', { index: idx + 1 });
 
             return (

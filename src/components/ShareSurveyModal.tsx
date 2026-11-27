@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import QRCode from 'qrcode';
 import { createTranslator } from '../i18n/index.ts';
 import { buildPublicSurveyUrl, buildViberShareUrl } from '../lib/urls.ts';
 import { useAppStore } from '../store/useAppStore.ts';
@@ -23,11 +22,14 @@ export function ShareSurveyModal({ survey, onClose }: ShareSurveyModalProps) {
 
   useEffect(() => {
     let active = true;
-    QRCode.toDataURL(publicUrl, {
-      width: 320,
-      margin: 2,
-      color: { dark: '#000000', light: '#ffffff' },
-    })
+    import('qrcode')
+      .then((QRCode) =>
+        QRCode.default.toDataURL(publicUrl, {
+          width: 320,
+          margin: 2,
+          color: { dark: '#000000', light: '#ffffff' },
+        })
+      )
       .then((url) => {
         if (active) setQrDataUrl(url);
       })

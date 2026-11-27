@@ -85,6 +85,15 @@ export function SurveyEditorView() {
 
   const skipFetchIdRef = useRef<string | null>(null);
   const carouselRef = useRef<HTMLDivElement | null>(null);
+  const scrollRafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (scrollRafRef.current !== null) {
+        cancelAnimationFrame(scrollRafRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -143,15 +152,19 @@ export function SurveyEditorView() {
   }
 
   function handleCarouselScroll() {
-    const track = carouselRef.current;
-    if (!track || track.children.length === 0) return;
-    const firstCard = track.children[0] as HTMLElement;
-    const stepWidth = firstCard.offsetWidth + 16;
-    if (stepWidth <= 0) return;
-    const idx = Math.round(track.scrollLeft / stepWidth);
-    if (idx >= 0 && idx < questions.length && idx !== activeSlide) {
-      setActiveSlide(idx);
-    }
+    if (scrollRafRef.current !== null) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      const track = carouselRef.current;
+      if (!track || track.children.length === 0) return;
+      const firstCard = track.children[0] as HTMLElement;
+      const stepWidth = firstCard.offsetWidth + 16;
+      if (stepWidth <= 0) return;
+      const idx = Math.round(track.scrollLeft / stepWidth);
+      if (idx >= 0 && idx < questions.length) {
+        setActiveSlide((prev) => (prev === idx ? prev : idx));
+      }
+    });
   }
 
   function handleSelectTeam(nextTeamId: string) {
